@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <style>
+      .o{stroke:#111;stroke-width:14;stroke-linecap:round;stroke-linejoin:round}
+      .txt{font:900 44px Arial, sans-serif;fill:#ffb84d;stroke:#111;stroke-width:8;paint-order:stroke}
+    </style>
+  </defs>
+
+  <!-- Boiler body -->
+  <rect x="150" y="110" width="212" height="320" rx="32" fill="#ffe7c7" class="o"/>
+  <rect x="176" y="140" width="160" height="190" rx="22" fill="#fff3e1" class="o"/>
+
+  <!-- Gauge -->
+  <circle cx="256" cy="172" r="22" fill="#cfe9ff" class="o"/>
+  <path d="M256 172l12-10" fill="none" class="o"/>
+
+  <!-- Face -->
+  <circle cx="220" cy="260" r="10" fill="#111"/>
+  <circle cx="292" cy="260" r="10" fill="#111"/>
+  <path d="M230 292c18 14 36 14 54 0" fill="none" class="o"/>
+
+  <!-- Small flame -->
+  <path d="M256 420c-18-18-18-40 0-58c-4 18 10 24 16 36c6 12 0 20-16 22z"
+        fill="#ff7a00" class="o"/>
+  <path d="M256 410c-10-10-10-22 0-32c-2 10 6 14 9 21c3 7 0 11-9 11z"
+        fill="#ffd000" class="o"/>
+
+  <!-- Warm waves -->
+  <path d="M110 360c30-30 60-30 90 0c30-30 60-30 90 0c30-30 60-30 90 0c30-30 60-30 90 0"
+        fill="none" stroke="#ffb84d" stroke-width="12" stroke-linecap="round" opacity="0.85"/>
+
+  <text x="256" y="90" text-anchor="middle" class="txt">MMM…</text>
+</svg>
