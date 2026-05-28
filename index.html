@@ -177,12 +177,12 @@
       pointer-events:none;
     }
 
-    /* Sweep più lento (prima era 2.8s) */
+    /* Sweep lento */
     .radar__beam{
       position:absolute;
       inset:-10%;
       background: conic-gradient(from 90deg, rgba(58,214,255,0.30), transparent 60%);
-      animation: radarSpin 7.0s linear infinite;
+      animation: radarSpin 9.0s linear infinite; /* più lento */
       pointer-events:none;
     }
     @keyframes radarSpin { to { transform: rotate(360deg); } }
@@ -208,7 +208,6 @@
       transition: transform .18s ease;
     }
 
-    /* Piccolo “punch” quando cambia stato */
     .pop{ transform: scale(1.03); }
 
     @media (prefers-reduced-motion: reduce){
@@ -233,7 +232,7 @@
   <div id="app">
     <div id="toast"></div>
 
-    <img id="statusImage" src="images/ghiacciato.svg" alt="">
+    <img id="statusImage" src="images/ghiacciato.svg" alt="stato" />
     <div id="statusText">…</div>
     <div id="distanceText">Distanza: …</div>
 
@@ -277,12 +276,13 @@
     "Citazione di Katy Perry"
   ];
 
-  // Sweep: deve matchare la durata CSS (7.0s)
-  const SWEEP_PERIOD_MS = 7000;
-  // Dove “punta” il fascio in termini di gradi (0=su/Nord, cresce clockwise).
-  // Con "conic-gradient(from 90deg)" il fascio base punta a destra, quindi aggiungiamo 90°.
+  // Deve combaciare con CSS animation: 9.0s
+  const SWEEP_PERIOD_MS = 9000;
+
+  // Con conic-gradient(from 90deg) il fascio base parte verso destra: compenso con +90
   const SWEEP_OFFSET_DEG = 90;
-  // Quanto vicino deve essere il fascio al pallino per fare "beep"
+
+  // Quanto “vicino” deve essere il fascio al pallino per beepare
   const SWEEP_HIT_THRESHOLD_DEG = 10;
 
   // Preload immagini
@@ -300,37 +300,44 @@
   const distanceText = document.getElementById("distanceText");
   const statusImage = document.getElementById("statusImage");
   const toast = document.getElementById("toast");
-
   const targetDot = document.getElementById("targetDot");
 
   /* ------------------ State ------------------ */
-  let watchId =et lastState = null;
+  let watchId = null;
+
+  // Vibrazione
+  let lastVibrateAt = 0;
+  let lastState = null;
   let insideFuoco = false;
 
   // Radar / beep
-  let dotAngleDeg = null;      // direzione del pallino rispetto al centro (0=su)
-  let dotRadiusPx = 0;         // distanza in px (solo per debug/limit)
-  let sweepT0 = 0;             // start time of sweep
-  let inHitZone = false;       // per suonare una sola volta per passaggio
-  let lastBeepAt = 0;          // rate limit beep
+  let dotAngleDeg = null;   // direzione target (0=su)
+  let dotRadiusPx = 0;
+  let sweepT0 = 0;
+  let inHitZone = false;
+  let lastBeepAt = 0;
 
   // Audio
   let audioCtx = null;
 
-  /* ------------------ Start flow ------------------ */
-  enterBtn.addEventListener("pointerdown", () => {
+  /* ------------------ START/LOGIN handlers (FIX) ------------------ */
+  // Metto sia click che touchstart: così “START” funziona ovunque.
+  function showLogin(){
     enterBtn.style.display = "none";
     loginBox.style.display = "flex";
     pwd.focus();
-  }, { passive: true });
+  }
+  enterBtn.addEventListener("click", showLogin);
+  enterBtn.addEventListener("touchstart", (e) => { e.preventDefault(); showLogin(); }, { passive:false });
 
   okBtn.addEventListener("click", () => tryLogin());
+  okBtn.addEventListener("touchstart", (e) => { e.preventDefault(); tryLogin(); }, { passive:false });
   pwd.addEventListener("keydown", (e) => { if (e.key === "Enter") tryLogin(); });
 
   function tryLogin(){
     if (pwd.value === "RIELLO") {
       err.style.display = "none";
-      startApp(); // user gesture -> sblocca audio + geoloc
+      startApp(); // user gesture => sblocca audio
     } else {
       err.style.display = "block";
     }
@@ -343,13 +350,14 @@
 
     statusText.textContent = "…";
     distanceText.textContent = "Distanza: …";
+    statusImage.src = IMG.GHIACCIATO;
 
     startToastLoop();
 
-    // Sblocca audio in un gesto utente (evita blocchi autoplay) [2](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/resume)[3](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Autoplay)
+    // Sblocca audio dentro gesto utente (autoplay policy) ibrate)[2](https://stackoverflow.com/questions/16202077/high-accuracy-geolocation-html5)
     initAudio();
 
-    // Avvia sweep timer per beep
+    // Avvia loop beep sweep
     sweepT0 = performance.now();
     requestAnimationFrame(sweepLoop);
 
@@ -358,7 +366,7 @@
       return;
     }
 
-    // Tracking live [4](https://carrier-digital.atlassian.net/wiki/spaces/AA/pages/3280699647/AI_PM_0113+Project+Creation+-+Airtable+Dataiku+and+GitHub)
+    // Tracking live [3](https://teams.microsoft.com/l/meeting/details?eventId=AAMkAGNlM2Q5YjFkLTIwMTgtNGE2Yi1iMTc1LTVmZDM4ZGU3Yzc1YQBGAAAAAADdhLuEYE4LRr2hI2bL8iFxBwAAF2RAWYUHSZ7Nu5BBPAVjAAAAAAENAAAMwJPr9g8RTIo1bKB3i5n4AASEBRxAAAA%3d)
     const options = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     watchId = navigator.geolocation.watchPosition(onPos, onErr, options);
@@ -376,14 +384,13 @@
     setTimeout(() => toast.classList.remove("show"), 3500);
   }
 
-  /* ------------------ Audio (beep) ------------------ */
+  /* ------------------ Audio beep ------------------ */
   function initAudio(){
     try{
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
       if (!audioCtx) audioCtx = new Ctx();
-      // resume() ritorna una Promise, ma qui basta chiamarlo dentro il gesto utente [2](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/resume)
-      if (audioCtx.state === "suspended") audioCtx.resume();
+      if (audioCtx.state === "suspended") audioCtx.resume(); // [1](https://caniuse.com/mdn-api_navigator_vibrate)
     } catch(_){}
   }
 
@@ -391,11 +398,9 @@
     if (!audioCtx || audioCtx.state !== "running") return;
 
     const now = audioCtx.currentTime;
-
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
 
-    // beep “radar”: breve, non fastidioso
     osc.type = "sine";
     osc.frequency.setValueAtTime(880, now);
 
@@ -414,7 +419,6 @@
   function onPos(pos){
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
-
     const d = haversineMeters(lat, lon, TARGET_LAT, TARGET_LON);
 
     const state = classify(d);
@@ -434,10 +438,10 @@
     statusText.textContent = labelFor(state);
     distanceText.textContent = `Distanza: ${d.toFixed(1)} m`;
 
-    // Radar: target sempre "north-up" (senza bussola)
+    // Radar “north-up” (senza bussola)
     updateRadar(lat, lon, d);
 
-    // Vibrazione proporzionale ma limitata [5](https://carrier-digital.atlassian.net/wiki/spaces/AA/pages/3700850727/GitHub+-+Platform+Maintenance+Project+folders+organization+and+the+new+naming+convention)
+    // Vibrazione proporzionale ma limitata [4](https://teams.microsoft.com/l/meeting/details?eventId=AAMkAGNlM2Q5YjFkLTIwMTgtNGE2Yi1iMTc1LTVmZDM4ZGU3Yzc1YQFRAAgI3q7wPquAAEYAAAAA3YS7hGBOC0a9oSNmy-IhcQcAABdkQFmFB0mezbuQQTwFYwAAAAABDQAADMCT6-YPEUyKNWygd4uZ_AAEhAUcBgAAEA%3d%3d)
     handleVibration(d);
 
     // ingresso zona FUOCO: un colpetto una volta
@@ -470,14 +474,10 @@
 
   /* ------------------ Vibrazione (non troppo) ------------------ */
   function handleVibration(d){
-    if (typeof navigator.vibrate !== "function") return;
-
+    if (typeof navigator.vibrate !== "function") return; // [4](https://teams.microsoft.com/l/meeting/details?eventId=AAMkAGNlM2Q5YjFkLTIwMTgtNGE2Yi1iMTc1LTVmZDM4ZGU3Yzc1YQFRAAgI3q7wPquAAEYAAAAA3YS7hGBOC0a9oSNmy-IhcQcAABdkQFmFB0mezbuQQTwFYwAAAAABDQAADMCT6-YPEUyKNWygd4uZ_AAEhAUcBgAAEA%3d%3d)
     if (d > 100) return;
 
-    // Interval: 8s (vicino) -> 22s (lontano)
     const interval = clamp(8000 + (d/100)*14000, 8000, 22000);
-
-    // Durata: 160ms (vicino) -> 70ms (lontano)
     const duration = Math.round(clamp(160 - (d/100)*90, 70, 160));
 
     const now = Date.now();
@@ -499,8 +499,6 @@
     const maxM = 150;
 
     const bearingDeg = bearing(userLat, userLon, TARGET_LAT, TARGET_LON); // 0=Nord
-
-    // Dot angle (0=su) per beep sweep
     dotAngleDeg = bearingDeg;
 
     const r = clamp(distMeters / maxM, 0, 1) * Rpx;
@@ -516,21 +514,17 @@
 
   /* ------------------ Sweep detection loop ------------------ */
   function sweepLoop(t){
-    // Se non abbiamo ancora posizione del dot, riprova
     if (dotAngleDeg !== null) {
       const elapsed = (t - sweepT0) % SWEEP_PERIOD_MS;
-      const sweepRotDeg = (elapsed / SWEEP_PERIOD_MS) * 360;   // rotazione del layer
-      const beamDirDeg = (sweepRotDeg + SWEEP_OFFSET_DEG) % 360; // direzione del fascio
+      const sweepRotDeg = (elapsed / SWEEP_PERIOD_MS) * 360;
+      const beamDirDeg = (sweepRotDeg + SWEEP_OFFSET_DEG) % 360;
 
       const diff = angDiffDeg(beamDirDeg, dotAngleDeg);
+      const hit = diff <= SWEEP_HIT_THRESHOLD_DEG && dotRadiusPx > 6;
 
-      // Suona quando il fascio "passa sopra" (una volta per passaggio)
-      const hit = diff <= SWEEP_HIT_THRESHOLD_DEG && dotRadiusPx > 6; // evita beep se troppo al centro
       const now = performance.now();
-
       if (hit && !inHitZone) {
-        // rate limit: max 1 beep ogni ~900ms anche se jitter
-        if (now - lastBeepAt > 900) {
+        if (now - lastBeepAt > 900) { // rate limit
           beep();
           lastBeepAt = now;
         }
@@ -539,7 +533,6 @@
         inHitZone = false;
       }
     }
-
     requestAnimationFrame(sweepLoop);
   }
 
