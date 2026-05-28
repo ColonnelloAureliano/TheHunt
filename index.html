@@ -1,257 +1,180 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>App RIELLO</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Hunt</title>
 
-  <style>
-    body{
-      margin:0;
-      height:100vh;
-      display:flex;
-      justify-content:center;
-      align-items:center;
-      background:#fff;
-      font-family: Arial, sans-serif;
-      transition: background-color .25s ease;
-    }
-
-    #enterBtn{
-      width:120px;
-      height:120px;
-      border-radius:50%;
-      background:#000;
-      color:#fff;
-      display:flex;
-      justify-content:center;
-      align-items:center;
-      cursor:pointer;
-      user-select:none;
-      font-size:18px;
-      letter-spacing:.5px;
-      -webkit-tap-highlight-color: transparent;
+<style>
+    body {
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: white;
+        font-family: Arial;
+        transition: 0.3s;
     }
 
-    #inputBox{
-      display:none;
+    #button {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: black;
+        color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        cursor: pointer;
+        font-size: 18px;
     }
 
-    #password{
-      padding:12px 14px;
-      font-size:16px;
-      border:none;
-      outline:none;
-      text-align:center;
-      border-radius:10px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.12);
+    #inputBox {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
     }
 
-    /* Schermata nera post-login */
-    #screen{
-      display:none;
-      width:100%;
-      height:100%;
-      background:#000;
-      color:#fff;
-      justify-content:center;
-      align-items:center;
-      flex-direction:column;
-      gap:14px;
-      text-align:center;
-      padding:24px;
-      box-sizing:border-box;
+    input {
+        padding: 10px;
+        font-size: 16px;
+        text-align: center;
     }
 
-    #status{
-      font-size:34px;
-      font-weight:700;
-      letter-spacing:1px;
+    button {
+        padding: 8px 16px;
+        font-size: 16px;
+        cursor: pointer;
     }
 
-    #details{
-      font-size:16px;
-      opacity:.9;
-      white-space:pre-line;
-      line-height:1.4;
+    #error {
+        color: red;
+        font-size: 14px;
+        display: none;
     }
 
-    #hint{
-      font-size:13px;
-      opacity:.65;
-      max-width:520px;
-      line-height:1.35;
+    #screen {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: white;
+        text-align: center;
+        white-space: pre-line;
     }
 
-    /* piccola “flash” visuale quando entri sotto i 10m (fallback se vibrazione non supportata) */
-    .flash{
-      animation: flash .35s ease-in-out 0s 2;
+    #status {
+        font-size: 32px;
+        margin-bottom: 10px;
     }
-    @keyframes flash{
-      0%{ background:#000; }
-      50%{ background:#222; }
-      100%{ background:#000; }
-    }
-  </style>
+</style>
 </head>
 
 <body>
-  <div id="enterBtn">entra</div>
 
-  <div id="inputBox">
-    <input id="password" type="password" placeholder="Inserisci password" autocomplete="off" />
-  </div>
+<div id="button">entra</div>
 
-  <div id="screen">
-    <div id="status">…</div>
-    <div id="details">In attesa posizione…</div>
-    <div id="hint">
-      Se non chiede la posizione: la Geolocation in molti browser funziona solo in contesti sicuri (HTTPS) o su localhost. [1](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation/watchPosition)[4](https://developer.chrome.com/blog/geolocation-on-secure-contexts-only/)[5](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts)
-      <br/>La vibrazione dipende dal browser/dispositivo e può non funzionare in modalità Silenzioso/DND. [3](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/vibrate)
-    </div>
-  </div>
+<div id="inputBox">
+    <input type="text" id="password" placeholder="Inserisci password">
+    <button onclick="checkPassword()">OK</button>
+    <div id="error">Password errata</div>
+</div>
+
+<div id="screen">
+    <div id="status"></div>
+    <div id="distance"></div>
+</div>
 
 <script>
-  // Target prefissato
-  const TARGET_LAT = 45.851823282124876;
-  const TARGET_LON = 9.40799408339509;
 
-  // Soglie (metri)
-  const THRESH_FIRE = 10;
-  const THRESH_WARM = 25;
-  const THRESH_COLD = 100; // 50 e 100 entrambi "FREDDO" come richiesto
+const TARGET_LAT = 45.851823282124876;
+const TARGET_LON = 9.40799408339509;
 
-  const enterBtn = document.getElementById("enterBtn");
-  const inputBox = document.getElementById("inputBox");
-  const passwordInput = document.getElementById("password");
+let wasInside10 = false;
 
-  const screen = document.getElementById("screen");
-  const statusEl = document.getElementById("status");
-  const detailsEl = document.getElementById("details");
+// click entra
+document.getElementById("button").onclick = () => {
+    document.getElementById("button").style.display = "none";
+    document.getElementById("inputBox").style.display = "flex";
+};
 
-  let watchId = null;
+// verifica password
+function checkPassword() {
+    const pwd = document.getElementById("password").value;
 
-  // Per vibrazione: trigger SOLO quando attraversi la soglia verso l'interno
-  let wasInside10m = false;
-
-  // Per alcuni device, eventi "pointerdown" risultano più affidabili per azioni sensibili come vibrazione. [6](https://stackoverflow.com/questions/75394790/navigator-vibrate-not-working-in-mobile-devices-even)
-  enterBtn.addEventListener("pointerdown", () => {
-    enterBtn.style.display = "none";
-    inputBox.style.display = "block";
-    passwordInput.focus();
-  }, { passive: true });
-
-  passwordInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      if (passwordInput.value === "RIELLO") {
-        avviaTrackingLive();
-      }
-    }
-  });
-
-  function avviaTrackingLive(){
-    // UI: passa a schermata nera
-    document.body.style.backgroundColor = "#000";
-    enterBtn.style.display = "none";
-    inputBox.style.display = "none";
-    screen.style.display = "flex";
-
-    statusEl.textContent = "…";
-    detailsEl.textContent = "Richiesta posizione…";
-
-    if (!navigator.geolocation){
-      statusEl.textContent = "ERRORE";
-      detailsEl.textContent = "Geolocalizzazione non supportata dal browser.";
-      return;
-    }
-
-    // Avvio watchPosition: aggiornamenti continui quando cambia la posizione [1](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation/watchPosition)[2](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API)
-    const options = {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 10000
-    };
-
-    // stop eventuale watch precedente
-    if (watchId !== null) {
-      navigator.geolocation.clearWatch(watchId);
-      watchId = null;
-    }
-
-    watchId = navigator.geolocation.watchPosition(onPos, onErr, options);
-  }
-
-  function onPos(position){
-    const lat = position.coords.latitude;
-    const lon = position.coords.longitude;
-    const acc = position.coords.accuracy; // metri (stimati)
-
-    const distM = haversineMeters(lat, lon, TARGET_LAT, TARGET_LON);
-
-    // Messaggio in base alla distanza
-    let label = "";
-    if (distM <= THRESH_FIRE) {
-      label = "FUOCO";
-    } else if (distM <= THRESH_WARM) {
-      label = "FUOCHINO";
-    } else if (distM <= THRESH_COLD) {
-      label = "FREDDO";
+    if (pwd === "RIELLO") {
+        startApp();
     } else {
-      label = "GHIACCIATO";
+        document.getElementById("error").style.display = "block";
+    }
+}
+
+// AVVIO APP (fix iPhone: chiamata dopo click utente)
+function startApp() {
+    document.body.style.background = "black";
+    document.getElementById("inputBox").style.display = "none";
+    document.getElementById("screen").style.display = "flex";
+
+    if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(updatePosition, showError, {
+            enableHighAccuracy: true,
+            maximumAge: 0
+        });
+    }
+}
+
+// update live
+function updatePosition(pos) {
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+
+    const d = distance(lat, lon, TARGET_LAT, TARGET_LON);
+
+    let text = "";
+
+    if (d <= 10) text = "FUOCO 🔥";
+    else if (d <= 25) text = "FUOCHINO 🔥";
+    else if (d <= 100) text = "FREDDO 🧊";
+    else text = "GHIACCIATO ❄️";
+
+    document.getElementById("status").innerText = text;
+    document.getElementById("distance").innerText = "Distanza: " + d.toFixed(1) + " m";
+
+    // vibrazione solo quando entra nei 10m
+    if (d <= 10 && !wasInside10) {
+        if (navigator.vibrate) {
+            navigator.vibrate([200, 100, 200]);
+        }
     }
 
-    statusEl.textContent = label;
-    detailsEl.textContent =
-      `Distanza: ${distM.toFixed(1)} m\nAccuratezza (stimata): ±${acc ? acc.toFixed(0) : "?"} m`;
+    wasInside10 = d <= 10;
+}
 
-    // Vibra quando ENTRI sotto i 10m (transizione da fuori -> dentro)
-    const inside10 = distM <= THRESH_FIRE;
-    if (inside10 && !wasInside10m) {
-      triggerVibrationAndFlash();
-    }
-    wasInside10m = inside10;
-  }
+// errore GPS
+function showError() {
+    document.getElementById("status").innerText = "Posizione non disponibile";
+}
 
-  function onErr(err){
-    statusEl.textContent = "ERRORE";
-    detailsEl.textContent =
-      `Impossibile ottenere la posizione.\n` +
-      `Codice: ${err.code}\nMessaggio: ${err.message}`;
-  }
+// distanza (Haversine)
+function distance(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
 
-  function triggerVibrationAndFlash(){
-    // Vibrazione: navigator.vibrate(pattern) [3](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/vibrate)
-    // Nota: può non avere effetto su device senza hardware, su alcuni browser (es. Safari), o con DND/Silenzioso. [3](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/vibrate)[7](https://caniuse.com/mdn-api_navigator_vibrate)
-    try {
-      if (typeof navigator.vibrate === "function") {
-        // pattern breve ma evidente
-        navigator.vibrate([120, 60, 120, 60, 240]);
-      }
-    } catch (_) { /* no-op */ }
-
-    // Fallback visuale (sempre), così lo “senti” anche se non vibra
-    screen.classList.remove("flash");
-    // forza reflow
-    void screen.offsetWidth;
-    screen.classList.add("flash");
-  }
-
-  // Distanza Haversine in metri
-  function haversineMeters(lat1, lon1, lat2, lon2){
-    const R = 6371000; // m
-    const toRad = (x) => x * Math.PI / 180;
-
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
 
     const a =
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-      Math.sin(dLon/2) * Math.sin(dLon/2);
+        Math.sin(dLat/2)*Math.sin(dLat/2) +
+        Math.cos(lat1*Math.PI/180) *
+        Math.cos(lat2*Math.PI/180) *
+        Math.sin(dLon/2)*Math.sin(dLon/2);
 
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  }
+    return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
 </script>
+
 </body>
 </html>
