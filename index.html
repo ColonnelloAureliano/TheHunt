@@ -11,7 +11,6 @@
       --fg:#fff;
       --accent:#3ad6ff;
       --danger:#ff4b4b;
-      --ok:#2ee59d;
     }
 
     body{
@@ -28,8 +27,8 @@
 
     /* START SCREEN */
     #enterBtn{
-      width:120px;
-      height:120px;
+      width:130px;
+      height:130px;
       border-radius:50%;
       background:#000;
       color:#fff;
@@ -39,8 +38,9 @@
       cursor:pointer;
       user-select:none;
       -webkit-tap-highlight-color: transparent;
-      font-size:18px;
-      letter-spacing:.5px;
+      font-size:20px;
+      font-weight:900;
+      letter-spacing:1px;
     }
 
     /* PASSWORD SCREEN */
@@ -51,7 +51,7 @@
       gap:10px;
     }
     #password{
-      width:min(280px, 80vw);
+      width:min(300px, 82vw);
       padding:12px 14px;
       font-size:16px;
       border-radius:12px;
@@ -68,12 +68,13 @@
       font-size:16px;
       background:#111;
       color:#fff;
+      font-weight:800;
     }
     #errorMsg{
       display:none;
       color:var(--danger);
       font-size:14px;
-      font-weight:700;
+      font-weight:900;
     }
 
     /* APP SCREEN */
@@ -87,13 +88,37 @@
       align-items:center;
       justify-content:center;
       flex-direction:column;
-      gap:12px;
-      padding:22px;
+      gap:10px;
+      padding:18px 18px 22px;
       box-sizing:border-box;
     }
 
+    /* popup messaggi random */
+    #toast{
+      position:absolute;
+      top:10px;
+      left:50%;
+      transform:translateX(-50%);
+      max-width:min(680px, 92vw);
+      padding:10px 14px;
+      border-radius:14px;
+      background:rgba(255,255,255,0.10);
+      border:1px solid rgba(255,255,255,0.18);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      font-weight:800;
+      text-align:center;
+      opacity:0;
+      pointer-events:none;
+      transition: opacity .35s ease, transform .35s ease;
+    }
+    #toast.show{
+      opacity:1;
+      transform:translateX(-50%) translateY(0);
+    }
+
     #statusImage{
-      width:min(320px, 70vw);
+      width:min(320px, 72vw);
       height:auto;
       filter: drop-shadow(0 12px 22px rgba(0,0,0,.6));
       transition: opacity .18s ease, transform .18s ease;
@@ -105,6 +130,7 @@
       font-weight:900;
       letter-spacing:1px;
       text-align:center;
+      margin-top:2px;
     }
 
     #distanceText{
@@ -114,11 +140,11 @@
       white-space:pre-line;
     }
 
-    /* Radar widget (effetto sweep) */
+    /* Radar widget */
     #radarWrap{
       margin-top:10px;
-      width:190px;
-      height:190px;
+      width:200px;
+      height:200px;
       position:relative;
     }
 
@@ -181,23 +207,48 @@
       transition: transform .18s ease;
     }
 
-    /* Piccolo “punch” quando cambia stato */
-    .pop{
-      transform: scale(1.03);
+    /* Bussola: ago Nord che ruota in base all'heading del telefono */
+    .radar__northNeedle{
+      position:absolute;
+      left:50%; top:50%;
+      width:2px;
+      height:86px;
+      transform-origin: 50% 100%;
+      transform: translate(-50%, -100%) rotate(0deg);
+      background: linear-gradient(to top, rgba(255,255,255,0), rgba(255,255,255,0.95));
+      box-shadow: 0 0 10px rgba(255,255,255,0.35);
+      opacity:.95;
+      pointer-events:none;
+    }
+    .radar__northLabel{
+      position:absolute;
+      left:50%;
+      top:10px;
+      transform: translateX(-50%);
+      font-weight:900;
+      font-size:14px;
+      color: rgba(255,255,255,0.95);
+      text-shadow: 0 2px 10px rgba(0,0,0,0.7);
+      opacity:.95;
+      pointer-events:none;
+      letter-spacing:.5px;
     }
 
-    /* accessibilità: se preferisci meno animazioni */
+    /* Piccolo “punch” quando cambia stato */
+    .pop{ transform: scale(1.03); }
+
     @media (prefers-reduced-motion: reduce){
       .radar__beam{ animation: none; }
       #statusImage{ transition: none; }
       .radar__targetDot{ transition:none; }
+      #toast{ transition:none; }
     }
   </style>
 </head>
 
 <body>
 
-  <div id="enterBtn">entra</div>
+  <div id="enterBtn">START</div>
 
   <div id="loginBox">
     <input id="password" type="text" placeholder="Inserisci password" autocomplete="off" />
@@ -206,7 +257,9 @@
   </div>
 
   <div id="app">
-    <img id="statusImage" src="images/ghiacciato.svg" alt="Stato" />
+    <div id="toast"></div>
+
+    <img id="statusImage" src="images/ghiacciato.svg" alt="stato">
     <div id="statusText">…</div>
     <div id="distanceText">Distanza: …</div>
 
@@ -217,6 +270,10 @@
         <div class="radar__circle"></div>
         <div class="radar__circle inner"></div>
         <div class="radar__circle inner2"></div>
+
+        <div id="northNeedle" class="radar__northNeedle"></div>
+        <div class="radar__northLabel">N</div>
+
         <div class="radar__centerDot"></div>
         <div id="targetDot" class="radar__targetDot"></div>
       </div>
@@ -241,7 +298,19 @@
     FUOCO: "images/fuoco.svg"
   };
 
-  // Preload (evita flicker quando cambia stato)
+  // Messaggi random “a scomparsa”
+  const MESSAGES = [
+    "pensavi sarebbe stato più semplice, vero?",
+    "quanti errori hai fatto nella vita per arrivare a questo punto",
+    "ma pensa potevi stare a casa a dormire",
+    "questo non c'era nel contratto",
+    "maledetti nerd",
+    "guarda, c'è un gattino alla tua destra! MIAOOOO",
+    "Bip Bip Bip Bip Bip",
+    "Citazione di Katy Perry"
+  ];
+
+  // Preload immagini (evita flicker quando cambia stato)
   Object.values(IMG).forEach(src => { const im = new Image(); im.src = src; });
 
   const enterBtn = document.getElementById("enterBtn");
@@ -254,11 +323,20 @@
   const statusText = document.getElementById("statusText");
   const distanceText = document.getElementById("distanceText");
   const statusImage = document.getElementById("statusImage");
+
+  const toast = document.getElementById("toast");
+
   const targetDot = document.getElementById("targetDot");
+  const northNeedle = document.getElementById("northNeedle");
 
   let watchId = null;
 
-  // Per vibrazione “proporzionale ma non troppo”
+  // Bussola
+  let phoneHeadingDeg = null;   // 0..360 (0 = Nord)
+  let headingListenerOn = false;
+  let lastHeadingTs = 0;
+
+  // Vibrazione “proporzionale ma non troppo”
   let lastVibrateAt = 0;
   let lastState = null;
   let insideFuoco = false;
@@ -279,14 +357,13 @@
   function tryLogin(){
     if (pwd.value === "RIELLO") {
       err.style.display = "none";
-      startApp(); // chiamata da gesto utente (ok per iOS)
+      startApp(); // gesto utente => ok per iOS
     } else {
       err.style.display = "block";
     }
   }
 
   function startApp(){
-    // UI
     loginBox.style.display = "none";
     document.body.style.background = "#000";
     app.style.display = "flex";
@@ -294,17 +371,79 @@
     statusText.textContent = "…";
     distanceText.textContent = "Distanza: …";
 
+    startToastLoop();
+
+    // Compass permission/listener (iOS può richiedere requestPermission su gesto utente)
+    startCompass();
+
     if (!navigator.geolocation){
       statusText.textContent = "Geolocalizzazione non supportata";
       return;
     }
 
-    // Tracking live: watchPosition (aggiorna ad ogni variazione) [1](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation/watchPosition)
+    // Tracking live: watchPosition
     const options = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
     watchId = navigator.geolocation.watchPosition(onPos, onErr, options);
   }
 
+  /* ------------------ Toast random ogni 15s ------------------ */
+  function startToastLoop(){
+    // Mostra subito un messaggio dopo un piccolo delay
+    setTimeout(showRandomToast, 1200);
+    setInterval(showRandomToast, 15000);
+  }
+
+  function showRandomToast(){
+    const msg = MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
+    toast.textContent = msg;
+    toast.classList.add("show");
+    // resta visibile ~3.5s poi sparisce
+    setTimeout(() => toast.classList.remove("show"), 3500);
+  }
+
+  /* ------------------ Bussola / Device orientation ------------------ */
+  function startCompass(){
+    if (headingListenerOn) return;
+    if (typeof DeviceOrientationEvent === "undefined") return;
+
+    const enable = () => {
+      window.addEventListener("deviceorientation", onDeviceOrientation, true);
+      headingListenerOn = true;
+    };
+
+    // iOS 13+ richiede DeviceOrientationEvent.requestPermission() su user gesture
+    if (typeof DeviceOrientationEvent.requestPermission === "function"){
+      DeviceOrientationEvent.requestPermission()
+        .then(state => { if (state === "granted") enable(); })
+        .catch(() => { /* denied => niente bussola */ });
+    } else {
+      enable();
+    }
+  }
+
+  function onDeviceOrientation(e){
+    const now = Date.now();
+    if (now - lastHeadingTs < 100) return; // ~10Hz
+    lastHeadingTs = now;
+
+    // Safari iOS: heading “reale” rispetto al Nord magnetico
+    if (typeof e.webkitCompassHeading === "number") {
+      phoneHeadingDeg = e.webkitCompassHeading; // 0..360
+    } else if (typeof e.alpha === "number") {
+      // su tutti i browser)
+      phoneHeadingDeg = e.alpha;
+    } else {
+      phoneHeadingDeg = null;
+    }
+
+    // Ago N: se telefono punta a 90°, il Nord sta a sinistra => ruota di -heading
+    if (phoneHeadingDeg !== null) {
+      northNeedle.style.transform = `translate(-50%, -100%) rotate(${-phoneHeadingDeg}deg)`;
+    }
+  }
+
+  /* ------------------ Geolocation update ------------------ */
   function onPos(pos){
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
@@ -314,11 +453,9 @@
     // Stato + immagine
     const state = classify(d);
     if (state !== lastState) {
-      // micro-effetto “pop” quando cambia stato
       statusImage.classList.add("pop");
       setTimeout(() => statusImage.classList.remove("pop"), 180);
 
-      // crossfade veloce immagine
       statusImage.style.opacity = 0;
       setTimeout(() => {
         statusImage.src = IMG[state];
@@ -331,21 +468,21 @@
     statusText.textContent = labelFor(state);
     distanceText.textContent = `Distanza: ${d.toFixed(1)} m`;
 
-    // Radar: posiziona il pallino target con bearing + distanza
+    // Radar: target relativo alla direzione del telefono (se disponibile)
     updateRadar(lat, lon, d);
 
-    // Vibrazione proporzionale (limitata): più vicino => più frequente, ma min 6s
+    // Vibrazione proporzionale (limitata)
     handleVibration(d);
 
-    // “ingresso” zona fuoco (≤10m) -> pattern breve una volta
+    // “ingresso” zona FUOCO => un colpetto una volta
     const nowInside = d <= T_FUOCO;
     if (nowInside && !insideFuoco) {
-      vibrateOnce([120, 60, 120]); // breve, non eccessivo
+      vibrateOnce([90, 60, 90]); // breve
     }
     insideFuoco = nowInside;
   }
 
-  function onErr(e){
+  function onErr(){
     statusText.textContent = "Posizione non disponibile";
   }
 
@@ -365,18 +502,18 @@
     }
   }
 
+  /* ------------------ Vibrazione (non troppo) ------------------ */
   function handleVibration(d){
-    // navigator.vibrate richiede user activation e può non funzionare su alcuni browser/dispositivi [3](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/vibrate)
     if (typeof navigator.vibrate !== "function") return;
 
     // oltre 100m: niente vibrazione
     if (d > 100) return;
 
-    // Interval: 6s (vicino) -> 15s (lontano)
-    const interval = clamp(6000 + (d/100)*9000, 6000, 15000);
+    // Interval: 8s (vicino) -> 22s (lontano)
+    const interval = clamp(8000 + (d/100)*14000, 8000, 22000);
 
-    // Durata: 200ms (vicino) -> 80ms (lontano)
-    const duration = Math.round(clamp(200 - (d/100)*120, 80, 200));
+    // Durata: 160ms (vicino) -> 70ms (lontano)
+    const duration = Math.round(clamp(160 - (d/100)*90, 70, 160));
 
     const now = Date.now();
     if (now - lastVibrateAt >= interval) {
@@ -391,24 +528,32 @@
     lastVibrateAt = Date.now();
   }
 
+  /* ------------------ Radar target positioning ------------------ */
   function updateRadar(userLat, userLon, distMeters){
-    // radar radius in px and max distance scale in meters
-    const Rpx = 82;       // raggio utile dentro il cerchio (circa)
-    const maxM = 150;     // oltre 150m clamp al bordo
+    const Rpx = 86;    // raggio utile in px
+    const maxM = 150;  // scala: oltre 150m va al bordo
 
-    const bearingDeg = bearing(userLat, userLon, TARGET_LAT, TARGET_LON); // 0°=N
+    const bearingDeg = bearing(userLat, userLon, TARGET_LAT, TARGET_LON); // 0=N
+
+    // Se abbiamo heading del telefono, rendi il radar “device-forward”
+    // cioè: 0° (in alto) = direzione del telefono.
+    let angleDeg = bearingDeg;
+    if (phoneHeadingDeg !== null) {
+      angleDeg = (bearingDeg - phoneHeadingDeg + 360) % 360;
+    }
+
     const r = clamp(distMeters / maxM, 0, 1) * Rpx;
 
-    // convert bearing to x,y: 0°=up => angleRad = bearing - 90
-    const ang = (bearingDeg - 90) * Math.PI / 180;
+    // 0°=N deve puntare “su” => converti a coordinate schermo
+    const ang = (angleDeg - 90) * Math.PI / 180;
     const x = r * Math.cos(ang);
     const y = r * Math.sin(ang);
 
-    // move dot relative to center
-    targetDot.style.transform = `translate(calc(-50% + ${x.toFixed(1)}px), calc(-50% + ${y.toFixed(1)}px))`;
+    targetDot.style.transform =
+      `translate(calc(-50% + ${x.toFixed(1)}px), calc(-50% + ${y.toFixed(1)}px))`;
   }
 
-  // Haversine distance in meters
+  /* ------------------ Helpers: distance & bearing ------------------ */
   function haversineMeters(lat1, lon1, lat2, lon2){
     const R = 6371000;
     const toRad = (x) => x * Math.PI / 180;
@@ -425,7 +570,6 @@
     return R * c;
   }
 
-  // Bearing in degrees (0..360)
   function bearing(lat1, lon1, lat2, lon2){
     const toRad = (x) => x * Math.PI / 180;
     const toDeg = (x) => x * 180 / Math.PI;
@@ -444,3 +588,4 @@
 
 </body>
 </html>
+
