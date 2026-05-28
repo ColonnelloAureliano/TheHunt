@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>App RIELLO</title>
+
+  <style>
+    body{
+      margin:0;
+      height:100vh;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      background:#fff;
+      font-family: Arial, sans-serif;
+      transition: background-color .25s ease;
+    }
+
+    #enterBtn{
+      width:120px;
+      height:120px;
+      border-radius:50%;
+      background:#000;
+      color:#fff;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      cursor:pointer;
+      user-select:none;
+      font-size:18px;
+      letter-spacing:.5px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #inputBox{
+      display:none;
+    }
+
+    #password{
+      padding:12px 14px;
+      font-size:16px;
+      border:none;
+      outline:none;
+      text-align:center;
+      border-radius:10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.12);
+    }
+
+    /* Schermata nera post-login */
+    #screen{
+      display:none;
+      width:100%;
+      height:100%;
+      background:#000;
+      color:#fff;
+      justify-content:center;
+      align-items:center;
+      flex-direction:column;
+      gap:14px;
+      text-align:center;
+      padding:24px;
+      box-sizing:border-box;
+    }
+
+    #status{
+      font-size:34px;
+      font-weight:700;
+      letter-spacing:1px;
+    }
+
+    #details{
+      font-size:16px;
+      opacity:.9;
+      white-space:pre-line;
+      line-height:1.4;
+    }
+
+    #hint{
+      font-size:13px;
+      opacity:.65;
+      max-width:520px;
+      line-height:1.35;
+    }
+
+    /* piccola “flash” visuale quando entri sotto i 10m (fallback se vibrazione non supportata) */
+    .flash{
+      animation: flash .35s ease-in-out 0s 2;
+    }
+    @keyframes flash{
+      0%{ background:#000; }
+      50%{ background:#222; }
+      100%{ background:#000; }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="enterBtn">entra</div>
+
+  <div id="inputBox">
+    <input id="password" type="password" placeholder="Inserisci password" autocomplete="off" />
+  </div>
+
+  <div id="screen">
+    <div id="status">…</div>
+    <div id="details">In attesa posizione…</div>
+    <div id="hint">
+      Se non chiede la posizione: la Geolocation in molti browser funziona solo in contesti sicuri (HTTPS) o su localhost. [1](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation/watchPosition)[4](https://developer.chrome.com/blog/geolocation-on-secure-contexts-only/)[5](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts)
+      <br/>La vibrazione dipende dal browser/dispositivo e può non funzionare in modalità Silenzioso/DND. [3](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/vibrate)
+    </div>
+  </div>
+
+<script>
+  // Target prefissato
+  const TARGET_LAT = 45.851823282124876;
+  const TARGET_LON = 9.40799408339509;
+
+  // Soglie (metri)
+  const THRESH_FIRE = 10;
+  const THRESH_WARM = 25;
+  const THRESH_COLD = 100; // 50 e 100 entrambi "FREDDO" come richiesto
+
+  const enterBtn = document.getElementById("enterBtn");
+  const inputBox = document.getElementById("inputBox");
+  const passwordInput = document.getElementById("password");
+
+  const screen = document.getElementById("screen");
+  const statusEl = document.getElementById("status");
+  const detailsEl = document.getElementById("details");
+
+  let watchId = null;
+
+  // Per vibrazione: trigger SOLO quando attraversi la soglia verso l'interno
+  let wasInside10m = false;
+
+  // Per alcuni device, eventi "pointerdown" risultano più affidabili per azioni sensibili come vibrazione. [6](https://stackoverflow.com/questions/75394790/navigator-vibrate-not-working-in-mobile-devices-even)
+  enterBtn.addEventListener("pointerdown", () => {
+    enterBtn.style.display = "none";
+    inputBox.style.display = "block";
+    passwordInput.focus();
+  }, { passive: true });
+
+  passwordInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      if (passwordInput.value === "RIELLO") {
+        avviaTrackingLive();
+      }
+    }
+  });
+
+  function avviaTrackingLive(){
+    // UI: passa a schermata nera
+    document.body.style.backgroundColor = "#000";
+    enterBtn.style.display = "none";
+    inputBox.style.display = "none";
+    screen.style.display = "flex";
+
+    statusEl.textContent = "…";
+    detailsEl.textContent = "Richiesta posizione…";
+
+    if (!navigator.geolocation){
+      statusEl.textContent = "ERRORE";
+      detailsEl.textContent = "Geolocalizzazione non supportata dal browser.";
+      return;
+    }
+
+    // Avvio watchPosition: aggiornamenti continui quando cambia la posizione [1](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation/watchPosition)[2](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API)
+    const options = {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 10000
+    };
+
+    // stop eventuale watch precedente
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+
+    watchId = navigator.geolocation.watchPosition(onPos, onErr, options);
+  }
+
+  function onPos(position){
+    const lat = position.coords.latitude;
+    const lon = position.coords.longitude;
+    const acc = position.coords.accuracy; // metri (stimati)
+
+    const distM = haversineMeters(lat, lon, TARGET_LAT, TARGET_LON);
+
+    // Messaggio in base alla distanza
+    let label = "";
+    if (distM <= THRESH_FIRE) {
+      label = "FUOCO";
+    } else if (distM <= THRESH_WARM) {
+      label = "FUOCHINO";
+    } else if (distM <= THRESH_COLD) {
+      label = "FREDDO";
+    } else {
+      label = "GHIACCIATO";
+    }
+
+    statusEl.textContent = label;
+    detailsEl.textContent =
+      `Distanza: ${distM.toFixed(1)} m\nAccuratezza (stimata): ±${acc ? acc.toFixed(0) : "?"} m`;
+
+    // Vibra quando ENTRI sotto i 10m (transizione da fuori -> dentro)
+    const inside10 = distM <= THRESH_FIRE;
+    if (inside10 && !wasInside10m) {
+      triggerVibrationAndFlash();
+    }
+    wasInside10m = inside10;
+  }
+
+  function onErr(err){
+    statusEl.textContent = "ERRORE";
+    detailsEl.textContent =
+      `Impossibile ottenere la posizione.\n` +
+      `Codice: ${err.code}\nMessaggio: ${err.message}`;
+  }
+
+  function triggerVibrationAndFlash(){
+    // Vibrazione: navigator.vibrate(pattern) [3](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/vibrate)
+    // Nota: può non avere effetto su device senza hardware, su alcuni browser (es. Safari), o con DND/Silenzioso. [3](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/vibrate)[7](https://caniuse.com/mdn-api_navigator_vibrate)
+    try {
+      if (typeof navigator.vibrate === "function") {
+        // pattern breve ma evidente
+        navigator.vibrate([120, 60, 120, 60, 240]);
+      }
+    } catch (_) { /* no-op */ }
+
+    // Fallback visuale (sempre), così lo “senti” anche se non vibra
+    screen.classList.remove("flash");
+    // forza reflow
+    void screen.offsetWidth;
+    screen.classList.add("flash");
+  }
+
+  // Distanza Haversine in metri
+  function haversineMeters(lat1, lon1, lat2, lon2){
+    const R = 6371000; // m
+    const toRad = (x) => x * Math.PI / 180;
+
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+
+    const a =
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }
+</script>
+</body>
+</html>
