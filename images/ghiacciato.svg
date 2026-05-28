@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <style>
+      .o{stroke:#111;stroke-width:14;stroke-linecap:round;stroke-linejoin:round}
+      .txt{font:900 44px Arial, sans-serif;fill:#9fe7ff;stroke:#111;stroke-width:8;paint-order:stroke}
+    </style>
+  </defs>
+
+  <!-- Heat pump body -->
+  <rect x="96" y="140" width="320" height="260" rx="28" fill="#d7dee6" class="o"/>
+  <rect x="120" y="168" width="272" height="200" rx="20" fill="#eef3f8" class="o"/>
+
+  <!-- Fan -->
+  <circle cx="256" cy="268" r="86" fill="#c7d3df" class="o"/>
+  <circle cx="256" cy="268" r="26" fill="#98a9ba" class="o"/>
+  <path d="M256 182c28 20 40 52 18 80c-18 24-56 26-78 4" fill="none" class="o"/>
+  <path d="M170 268c20-28 52-40 80-18c24 18 26 56 4 78" fill="none" class="o"/>
+  <path d="M256 354c-28-20-40-52-18-80c18-24 56-26 78-4" fill="none" class="o"/>
+  <path d="M342 268c-20 28-52 40-80 18c-24-18-26-56-4-78" fill="none" class="o"/>
+
+  <!-- Frost overlay -->
+  <path d="M130 205c40-20 90-30 140-22c40 6 74 24 112 18c18-3 26-10 40-18v54c-14 10-28 16-46 18c-46 6-82-18-124-22c-48-5-94 6-122 26z"
+        fill="#bff2ff" opacity="0.75" class="o"/>
+
+  <!-- Icicles -->
+  <path d="M132 140v58l-20-26l20-32z" fill="#9fe7ff" class="o"/>
+  <path d="M180 140v68l-18-22l18-46z" fill="#9fe7ff" class="o"/>
+  <path d="M330 140v74l-18-26l18-48z" fill="#9fe7ff" class="o"/>
+  <path d="M382 140v56l-16-20l16-36z" fill="#9fe7ff" class="o"/>
+
+  <!-- Face -->
+  <circle cx="210" cy="344" r="10" fill="#111"/>
+  <circle cx="302" cy="344" r="10" fill="#111"/>
+  <path d="M220 376c20-16 52-16 72 0" fill="none" class="o"/>
+  <path d="M210 332c-14-12-30-10-40 0" fill="none" class="o"/>
+  <path d="M302 332c14-12 30-10 40 0" fill="none" class="o"/>
+
+  <text x="256" y="110" text-anchor="middle" class="txt">BRRR!</text>
+  <path d="M72 430c60-50 120-52 180-6c60-46 120-44 188 6" fill="none" stroke="#9fe7ff" stroke-width="10" stroke-linecap="round" opacity="0.9"/>
+</svg>
