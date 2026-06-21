@@ -251,8 +251,8 @@
 
 <script>
   /* ------------------ Config ------------------ */
-  const TARGET_LAT = 45.851823282124876;
-  const TARGET_LON = 9.40799408339509;
+  const TARGET_LAT = 45.850125;
+  const TARGET_LON = 9.390022;
 
   const T_FUOCO = 10;
   const T_FUOCHINO = 25;
@@ -335,7 +335,7 @@
   pwd.addEventListener("keydown", (e) => { if (e.key === "Enter") tryLogin(); });
 
   function tryLogin(){
-    if (pwd.value === "RIELLO") {
+    if (pwd.value === "4") {
       err.style.display = "none";
       startApp(); // user gesture => sblocca audio
     } else {
