@@ -50,6 +50,7 @@
       align-items:center;
       gap:10px;
     }
+
     #password{
       width:min(300px, 82vw);
       padding:12px 14px;
@@ -60,6 +61,7 @@
       text-align:center;
       box-shadow:0 10px 30px rgba(0,0,0,.08);
     }
+
     #okBtn{
       padding:10px 18px;
       border-radius:12px;
@@ -70,6 +72,7 @@
       color:#fff;
       font-weight:800;
     }
+
     #errorMsg{
       display:none;
       color:var(--danger);
@@ -111,7 +114,9 @@
       opacity:0;
       pointer-events:none;
       transition: opacity .35s ease, transform .35s ease;
+      z-index:20;
     }
+
     #toast.show{
       opacity:1;
       transform:translateX(-50%) translateY(0);
@@ -157,14 +162,21 @@
       border:1px solid rgba(255,255,255,0.22);
       box-shadow:0 0 22px rgba(58,214,255,0.25);
     }
+
     .radar__circle{
       position:absolute;
       inset:14%;
       border-radius:50%;
       border:1px solid rgba(58,214,255,0.35);
     }
-    .radar__circle.inner{ inset:30%; }
-    .radar__circle.inner2{ inset:46%; }
+
+    .radar__circle.inner{ 
+      inset:30%; 
+    }
+
+    .radar__circle.inner2{ 
+      inset:46%; 
+    }
 
     .radar__cross{
       position:absolute;
@@ -182,33 +194,44 @@
       position:absolute;
       inset:-10%;
       background: conic-gradient(from 90deg, rgba(58,214,255,0.30), transparent 60%);
-      animation: radarSpin 9.0s linear infinite; /* più lento */
+      animation: radarSpin 9.0s linear infinite;
       pointer-events:none;
     }
-    @keyframes radarSpin { to { transform: rotate(360deg); } }
+
+    @keyframes radarSpin { 
+      to { transform: rotate(360deg); } 
+    }
 
     .radar__centerDot{
       position:absolute;
-      left:50%; top:50%;
-      width:8px; height:8px;
+      left:50%; 
+      top:50%;
+      width:8px; 
+      height:8px;
       transform:translate(-50%,-50%);
       background:rgba(58,214,255,0.95);
       border-radius:50%;
       box-shadow:0 0 12px rgba(58,214,255,0.9);
+      z-index:6;
     }
 
     .radar__targetDot{
       position:absolute;
-      left:50%; top:50%;
-      width:10px; height:10px;
+      left:50%; 
+      top:50%;
+      width:10px; 
+      height:10px;
       transform:translate(-50%,-50%);
       border-radius:50%;
       background:rgba(255,255,255,0.95);
       box-shadow:0 0 14px rgba(255,255,255,0.65);
       transition: transform .18s ease;
+      z-index:5;
     }
 
-    .pop{ transform: scale(1.03); }
+    .pop{ 
+      transform: scale(1.03); 
+    }
 
     @media (prefers-reduced-motion: reduce){
       .radar__beam{ animation: none; }
@@ -251,8 +274,10 @@
 
 <script>
   /* ------------------ Config ------------------ */
-  const TARGET_LAT = 45.850125;
-  const TARGET_LON = 9.390022;
+
+  // Target: Chiosco da Friz, Lungolago di Lecco
+  const TARGET_LAT = 45.8592048;
+  const TARGET_LON = 9.3842831;
 
   const T_FUOCO = 10;
   const T_FUOCHINO = 25;
@@ -282,13 +307,17 @@
   // Con conic-gradient(from 90deg) il fascio base parte verso destra: compenso con +90
   const SWEEP_OFFSET_DEG = 90;
 
-  // Quanto “vicino” deve essere il fascio al pallino per beepare
+  // Quanto vicino deve essere il fascio al pallino per beepare
   const SWEEP_HIT_THRESHOLD_DEG = 10;
 
   // Preload immagini
-  Object.values(IMG).forEach(src => { const im = new Image(); im.src = src; });
+  Object.values(IMG).forEach(src => { 
+    const im = new Image(); 
+    im.src = src; 
+  });
 
   /* ------------------ DOM ------------------ */
+
   const enterBtn = document.getElementById("enterBtn");
   const loginBox = document.getElementById("loginBox");
   const okBtn = document.getElementById("okBtn");
@@ -303,7 +332,13 @@
   const targetDot = document.getElementById("targetDot");
 
   /* ------------------ State ------------------ */
+
   let watchId = null;
+
+  // Ultima posizione nota
+  let lastUserLat = null;
+  let lastUserLon = null;
+  let lastDistanceMeters = null;
 
   // Vibrazione
   let lastVibrateAt = 0;
@@ -311,33 +346,49 @@
   let insideFuoco = false;
 
   // Radar / beep
-  let dotAngleDeg = null;   // direzione target (0=su)
+  let dotAngleDeg = null;           // direzione del target relativa allo schermo: 0=su
+  let absoluteBearingDeg = null;    // bearing geografico verso target: 0=Nord
   let dotRadiusPx = 0;
   let sweepT0 = 0;
   let inHitZone = false;
   let lastBeepAt = 0;
 
+  // Bussola telefono
+  let compassHeadingDeg = 0;        // 0=Nord, 90=Est, 180=Sud, 270=Ovest
+  let compassAvailable = false;
+  let compassStarted = false;
+
   // Audio
   let audioCtx = null;
 
-  /* ------------------ START/LOGIN handlers (FIX) ------------------ */
-  // Metto sia click che touchstart: così “START” funziona ovunque.
+  /* ------------------ START/LOGIN handlers ------------------ */
+
   function showLogin(){
     enterBtn.style.display = "none";
     loginBox.style.display = "flex";
     pwd.focus();
   }
+
   enterBtn.addEventListener("click", showLogin);
-  enterBtn.addEventListener("touchstart", (e) => { e.preventDefault(); showLogin(); }, { passive:false });
+  enterBtn.addEventListener("touchstart", (e) => { 
+    e.preventDefault(); 
+    showLogin(); 
+  }, { passive:false });
 
   okBtn.addEventListener("click", () => tryLogin());
-  okBtn.addEventListener("touchstart", (e) => { e.preventDefault(); tryLogin(); }, { passive:false });
-  pwd.addEventListener("keydown", (e) => { if (e.key === "Enter") tryLogin(); });
+  okBtn.addEventListener("touchstart", (e) => { 
+    e.preventDefault(); 
+    tryLogin(); 
+  }, { passive:false });
+
+  pwd.addEventListener("keydown", (e) => { 
+    if (e.key === "Enter") tryLogin(); 
+  });
 
   function tryLogin(){
     if (pwd.value === "4") {
       err.style.display = "none";
-      startApp(); // user gesture => sblocca audio
+      startApp();
     } else {
       err.style.display = "block";
     }
@@ -354,8 +405,11 @@
 
     startToastLoop();
 
-    // Sblocca audio dentro gesto utente (autoplay policy) ibrate)[2](https://stackoverflow.com/questions/16202077/high-accuracy-geolocation-html5)
+    // Sblocca audio dentro gesto utente
     initAudio();
+
+    // Avvia compass mode
+    startCompass();
 
     // Avvia loop beep sweep
     sweepT0 = performance.now();
@@ -366,17 +420,26 @@
       return;
     }
 
-    // Tracking live [3](https://teams.microsoft.com/l/meeting/details?eventId=AAMkAGNlM2Q5YjFkLTIwMTgtNGE2Yi1iMTc1LTVmZDM4ZGU3Yzc1YQBGAAAAAADdhLuEYE4LRr2hI2bL8iFxBwAAF2RAWYUHSZ7Nu5BBPAVjAAAAAAENAAAMwJPr9g8RTIo1bKB3i5n4AASEBRxAAAA%3d)
-    const options = { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 };
-    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    const options = { 
+      enableHighAccuracy: true, 
+      maximumAge: 0, 
+      timeout: 10000 
+    };
+
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+    }
+
     watchId = navigator.geolocation.watchPosition(onPos, onErr, options);
   }
 
   /* ------------------ Toast random ogni 15s ------------------ */
+
   function startToastLoop(){
     setTimeout(showRandomToast, 1200);
     setInterval(showRandomToast, 15000);
   }
+
   function showRandomToast(){
     const msg = MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
     toast.textContent = msg;
@@ -384,13 +447,27 @@
     setTimeout(() => toast.classList.remove("show"), 3500);
   }
 
+  function showCompassToast(msg){
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.classList.add("show");
+    setTimeout(() => toast.classList.remove("show"), 3000);
+  }
+
   /* ------------------ Audio beep ------------------ */
+
   function initAudio(){
     try{
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
-      if (!audioCtx) audioCtx = new Ctx();
-      if (audioCtx.state === "suspended") audioCtx.resume(); // [1](https://caniuse.com/mdn-api_navigator_vibrate)
+
+      if (!audioCtx) {
+        audioCtx = new Ctx();
+      }
+
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
     } catch(_){}
   }
 
@@ -416,12 +493,18 @@
   }
 
   /* ------------------ Geolocation update ------------------ */
+
   function onPos(pos){
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
     const d = haversineMeters(lat, lon, TARGET_LAT, TARGET_LON);
 
+    lastUserLat = lat;
+    lastUserLon = lon;
+    lastDistanceMeters = d;
+
     const state = classify(d);
+
     if (state !== lastState) {
       statusImage.classList.add("pop");
       setTimeout(() => statusImage.classList.remove("pop"), 180);
@@ -438,13 +521,13 @@
     statusText.textContent = labelFor(state);
     distanceText.textContent = `Distanza: ${d.toFixed(1)} m`;
 
-    // Radar “north-up” (senza bussola)
+    // Radar in compass mode, con fallback north-up
     updateRadar(lat, lon, d);
 
-    // Vibrazione proporzionale ma limitata [4](https://teams.microsoft.com/l/meeting/details?eventId=AAMkAGNlM2Q5YjFkLTIwMTgtNGE2Yi1iMTc1LTVmZDM4ZGU3Yzc1YQFRAAgI3q7wPquAAEYAAAAA3YS7hGBOC0a9oSNmy-IhcQcAABdkQFmFB0mezbuQQTwFYwAAAAABDQAADMCT6-YPEUyKNWygd4uZ_AAEhAUcBgAAEA%3d%3d)
+    // Vibrazione proporzionale ma limitata
     handleVibration(d);
 
-    // ingresso zona FUOCO: un colpetto una volta
+    // Ingresso zona FUOCO: un colpetto una volta
     const nowInside = d <= T_FUOCO;
     if (nowInside && !insideFuoco) {
       vibrateOnce([90, 60, 90]);
@@ -452,8 +535,12 @@
     insideFuoco = nowInside;
   }
 
-  function onErr(){
+  function onErr(error){
     statusText.textContent = "Posizione non disponibile";
+
+    if (error && error.message) {
+      distanceText.textContent = error.message;
+    }
   }
 
   function classify(d){
@@ -472,15 +559,17 @@
     }
   }
 
-  /* ------------------ Vibrazione (non troppo) ------------------ */
+  /* ------------------ Vibrazione ------------------ */
+
   function handleVibration(d){
-    if (typeof navigator.vibrate !== "function") return; // [4](https://teams.microsoft.com/l/meeting/details?eventId=AAMkAGNlM2Q5YjFkLTIwMTgtNGE2Yi1iMTc1LTVmZDM4ZGU3Yzc1YQFRAAgI3q7wPquAAEYAAAAA3YS7hGBOC0a9oSNmy-IhcQcAABdkQFmFB0mezbuQQTwFYwAAAAABDQAADMCT6-YPEUyKNWygd4uZ_AAEhAUcBgAAEA%3d%3d)
+    if (typeof navigator.vibrate !== "function") return;
     if (d > 100) return;
 
-    const interval = clamp(8000 + (d/100)*14000, 8000, 22000);
-    const duration = Math.round(clamp(160 - (d/100)*90, 70, 160));
+    const interval = clamp(8000 + (d / 100) * 14000, 8000, 22000);
+    const duration = Math.round(clamp(160 - (d / 100) * 90, 70, 160));
 
     const now = Date.now();
+
     if (now - lastVibrateAt >= interval) {
       navigator.vibrate(duration);
       lastVibrateAt = now;
@@ -494,25 +583,107 @@
   }
 
   /* ------------------ Radar target positioning ------------------ */
+
   function updateRadar(userLat, userLon, distMeters){
     const Rpx = 86;
-    const maxM = 150;
 
-    const bearingDeg = bearing(userLat, userLon, TARGET_LAT, TARGET_LON); // 0=Nord
-    dotAngleDeg = bearingDeg;
+    // Scala radar:
+    // entro 300 m il pallino va dal centro al bordo.
+    // oltre 300 m rimane sul bordo nella direzione corretta.
+    const maxM = 300;
+
+    // Bearing geografico verso target:
+    // 0=Nord, 90=Est, 180=Sud, 270=Ovest
+    const bearingDeg = bearing(userLat, userLon, TARGET_LAT, TARGET_LON);
+    absoluteBearingDeg = bearingDeg;
+
+    // Compass mode:
+    // se la bussola è disponibile, il radar diventa relativo alla direzione del telefono.
+    // se non è disponibile, resta north-up.
+    let relativeDeg = bearingDeg;
+
+    if (compassAvailable) {
+      relativeDeg = normalizeDeg(bearingDeg - compassHeadingDeg);
+    }
+
+    dotAngleDeg = relativeDeg;
 
     const r = clamp(distMeters / maxM, 0, 1) * Rpx;
     dotRadiusPx = r;
 
-    const ang = (bearingDeg - 90) * Math.PI / 180;
-    const x = r * Math.cos(ang);
-    const y = r * Math.sin(ang);
+    // Conversione angolo -> coordinate radar:
+    // 0° = alto, 90° = destra, 180° = basso, 270° = sinistra
+    const ang = relativeDeg * Math.PI / 180;
+    const x = r * Math.sin(ang);
+    const y = -r * Math.cos(ang);
 
     targetDot.style.transform =
-      `translate(calc(-50% + ${x.toFixed(1)}px), calc(-50% + ${y.toFixed(1)}px))`;
+      `translate(-50%, -50%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+  }
+
+  /* ------------------ Compass mode ------------------ */
+
+  async function startCompass(){
+    if (compassStarted) return;
+    compassStarted = true;
+
+    try {
+      // iPhone/iPad: da iOS 13+ serve permesso esplicito
+      if (
+        typeof DeviceOrientationEvent !== "undefined" &&
+        typeof DeviceOrientationEvent.requestPermission === "function"
+      ) {
+        const permission = await DeviceOrientationEvent.requestPermission();
+
+        if (permission !== "granted") {
+          compassAvailable = false;
+          showCompassToast("Bussola non autorizzata: radar in modalità Nord.");
+          return;
+        }
+      }
+
+      window.addEventListener("deviceorientation", onDeviceOrientation, true);
+      window.addEventListener("deviceorientationabsolute", onDeviceOrientation, true);
+
+      showCompassToast("Compass mode attivo.");
+    } catch (e) {
+      compassAvailable = false;
+      showCompassToast("Bussola non disponibile: radar in modalità Nord.");
+    }
+  }
+
+  function onDeviceOrientation(event){
+    let heading = null;
+
+    // iOS Safari:
+    // webkitCompassHeading: 0=Nord, 90=Est, 180=Sud, 270=Ovest
+    if (typeof event.webkitCompassHeading === "number") {
+      heading = event.webkitCompassHeading;
+    }
+
+    // Android/Chrome:
+    // spesso alpha cresce in senso opposto, quindi si usa 360 - alpha.
+    else if (typeof event.alpha === "number") {
+      heading = 360 - event.alpha;
+    }
+
+    if (heading === null || Number.isNaN(heading)) return;
+
+    compassHeadingDeg = normalizeDeg(heading);
+    compassAvailable = true;
+
+    // Se abbiamo già una posizione, aggiorna subito il pallino anche restando fermi.
+    if (lastUserLat !== null && lastUserLon !== null && lastDistanceMeters !== null) {
+      updateRadar(lastUserLat, lastUserLon, lastDistanceMeters);
+    }
+  }
+
+  function normalizeDeg(deg){
+    return ((deg % 360) + 360) % 360;
   }
 
   /* ------------------ Sweep detection loop ------------------ */
+
   function sweepLoop(t){
     if (dotAngleDeg !== null) {
       const elapsed = (t - sweepT0) % SWEEP_PERIOD_MS;
@@ -523,8 +694,9 @@
       const hit = diff <= SWEEP_HIT_THRESHOLD_DEG && dotRadiusPx > 6;
 
       const now = performance.now();
+
       if (hit && !inHitZone) {
-        if (now - lastBeepAt > 900) { // rate limit
+        if (now - lastBeepAt > 900) {
           beep();
           lastBeepAt = now;
         }
@@ -533,6 +705,7 @@
         inHitZone = false;
       }
     }
+
     requestAnimationFrame(sweepLoop);
   }
 
@@ -543,6 +716,7 @@
   }
 
   /* ------------------ Helpers: distance & bearing ------------------ */
+
   function haversineMeters(lat1, lon1, lat2, lon2){
     const R = 6371000;
     const toRad = (x) => x * Math.PI / 180;
@@ -551,11 +725,11 @@
     const dLon = toRad(lon2 - lon1);
 
     const a =
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-      Math.sin(dLon/2) * Math.sin(dLon/2);
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
 
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }
 
@@ -563,16 +737,22 @@
     const toRad = (x) => x * Math.PI / 180;
     const toDeg = (x) => x * 180 / Math.PI;
 
-    const φ1 = toRad(lat1), φ2 = toRad(lat2);
-    const Δλ = toRad(lon2 - lon1);
+    const phi1 = toRad(lat1);
+    const phi2 = toRad(lat2);
+    const deltaLambda = toRad(lon2 - lon1);
 
-    const y = Math.sin(Δλ) * Math.cos(φ2);
-    const x = Math.cos(φ1)*Math.sin(φ2) - Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
-    const θ = Math.atan2(y, x);
-    return (toDeg(θ) + 360) % 360;
+    const y = Math.sin(deltaLambda) * Math.cos(phi2);
+    const x =
+      Math.cos(phi1) * Math.sin(phi2) -
+      Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+
+    const theta = Math.atan2(y, x);
+    return normalizeDeg(toDeg(theta));
   }
 
-  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+  function clamp(v, a, b){ 
+    return Math.max(a, Math.min(b, v)); 
+  }
 </script>
 
 </body>
