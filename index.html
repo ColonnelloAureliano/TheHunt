@@ -175,13 +175,8 @@
       border:1px solid rgba(58,214,255,0.35);
     }
 
-    .radar__circle.inner{
-      inset:30%;
-    }
-
-    .radar__circle.inner2{
-      inset:46%;
-    }
+    .radar__circle.inner{ inset:30%; }
+    .radar__circle.inner2{ inset:46%; }
 
     .radar__cross{
       position:absolute;
@@ -203,9 +198,7 @@
     }
 
     @keyframes radarSpin{
-      to{
-        transform: rotate(360deg);
-      }
+      to{ transform: rotate(360deg); }
     }
 
     .radar__centerDot{
@@ -235,9 +228,7 @@
       z-index:5;
     }
 
-    .pop{
-      transform: scale(1.03);
-    }
+    .pop{ transform: scale(1.03); }
 
     @media (prefers-reduced-motion: reduce){
       .radar__beam{ animation:none; }
@@ -287,16 +278,24 @@
     "4": {
       name: "Chiosco da Friz",
       lat: 45.8592048,
-      lon: 9.3842831
+      lon: 9.3842831,
+      calibration: false
     },
     "0": {
-      name: "Officina Badoni",
+      name: "Officina Badoni - coordinate indicative",
       lat: 45.85605,
-      lon: 9.39715
+      lon: 9.39715,
+      calibration: false
+    },
+    "9": {
+      name: "Calibrazione posizione attuale",
+      lat: null,
+      lon: null,
+      calibration: true
     }
   };
 
-  let currentTarget = TARGETS["4"];
+  let currentTarget = { ...TARGETS["4"] };
 
   /* ------------------ Config ------------------ */
 
@@ -306,6 +305,9 @@
 
   const MIN_MOVEMENT_METERS = 4.0;
   const MOVEMENT_TIMEOUT_MS = 15000;
+
+  // Password 9: tempo di media GPS per settare target corrente
+  const CALIBRATION_MS = 5000;
 
   const IMG = {
     GHIACCIATO: "images/ghiacciato.svg",
@@ -357,6 +359,7 @@
   let lastUserLat = null;
   let lastUserLon = null;
   let lastDistanceMeters = null;
+  let lastAccuracy = null;
 
   let movementRefLat = null;
   let movementRefLon = null;
@@ -376,6 +379,12 @@
   let lastBeepAt = 0;
 
   let audioCtx = null;
+
+  // Calibrazione password 9
+  let calibrationMode = false;
+  let calibrationDone = false;
+  let calibrationStartAt = 0;
+  let calibrationSamples = [];
 
   /* ------------------ Start/Login ------------------ */
 
@@ -405,7 +414,8 @@
     const code = pwd.value.trim();
 
     if (TARGETS[code]) {
-      currentTarget = TARGETS[code];
+      currentTarget = { ...TARGETS[code] };
+      calibrationMode = currentTarget.calibration === true;
       err.style.display = "none";
       startApp();
     } else {
@@ -417,6 +427,7 @@
     lastUserLat = null;
     lastUserLon = null;
     lastDistanceMeters = null;
+    lastAccuracy = null;
 
     movementRefLat = null;
     movementRefLon = null;
@@ -432,6 +443,10 @@
     dotRadiusPx = 0;
     inHitZone = false;
     lastBeepAt = 0;
+
+    calibrationDone = false;
+    calibrationStartAt = 0;
+    calibrationSamples = [];
   }
 
   function startApp(){
@@ -442,7 +457,13 @@
     app.style.display = "flex";
 
     statusText.textContent = "…";
-    distanceText.textContent = `Target: ${currentTarget.name}\nDistanza: …`;
+
+    if (calibrationMode) {
+      distanceText.textContent = "Target: CALIBRAZIONE\nStai fermo 5 secondi…";
+    } else {
+      distanceText.textContent = `Target: ${currentTarget.name}\nDistanza: …`;
+    }
+
     statusImage.src = IMG.GHIACCIATO;
 
     startToastLoop();
@@ -470,6 +491,10 @@
     }
 
     watchId = navigator.geolocation.watchPosition(onPos, onErr, options);
+
+    if (calibrationMode) {
+      showToast("Calibrazione GPS: resta fermo circa 5 secondi.");
+    }
   }
 
   /* ------------------ Toast ------------------ */
@@ -480,10 +505,16 @@
   }
 
   function showRandomToast(){
+    if (calibrationMode && !calibrationDone) return;
+
     const msg = MESSAGES[Math.floor(Math.random() * MESSAGES.length)];
+    showToast(msg, 3500);
+  }
+
+  function showToast(msg, duration = 3000){
     toast.textContent = msg;
     toast.classList.add("show");
-    setTimeout(() => toast.classList.remove("show"), 3500);
+    setTimeout(() => toast.classList.remove("show"), duration);
   }
 
   /* ------------------ Audio ------------------ */
@@ -531,10 +562,20 @@
     const lon = pos.coords.longitude;
     const accuracy = pos.coords.accuracy;
 
-    const d = haversineMeters(lat, lon, currentTarget.lat, currentTarget.lon);
-
     lastUserLat = lat;
     lastUserLon = lon;
+    lastAccuracy = accuracy;
+
+    handleCalibrationIfNeeded(lat, lon, accuracy);
+
+    if (currentTarget.lat === null || currentTarget.lon === null) {
+      statusText.textContent = "CALIBRAZIONE…";
+      distanceText.textContent = "Target: CALIBRAZIONE\nAttendo posizione GPS…";
+      updateDebug();
+      return;
+    }
+
+    const d = haversineMeters(lat, lon, currentTarget.lat, currentTarget.lon);
     lastDistanceMeters = d;
 
     updateMovementHeading(lat, lon);
@@ -555,7 +596,19 @@
     }
 
     statusText.textContent = labelFor(state);
-    distanceText.textContent = `Target: ${currentTarget.name}\nDistanza: ${d.toFixed(1)} m`;
+
+    if (calibrationMode && !calibrationDone) {
+      const elapsed = calibrationStartAt > 0 ? Date.now() - calibrationStartAt : 0;
+      const remaining = Math.max(0, Math.ceil((CALIBRATION_MS - elapsed) / 1000));
+      distanceText.textContent =
+        `Target: CALIBRAZIONE GPS\n` +
+        `Stai fermo… ${remaining}s\n` +
+        `Distanza provvisoria: ${d.toFixed(1)} m`;
+    } else {
+      distanceText.textContent =
+        `Target: ${currentTarget.name}\n` +
+        `Distanza: ${d.toFixed(1)} m`;
+    }
 
     updateRadar(lat, lon, d, accuracy);
     handleVibration(d);
@@ -575,6 +628,67 @@
     } else {
       distanceText.textContent = "Errore GPS.";
     }
+  }
+
+  /* ------------------ Calibrazione GPS ------------------ */
+
+  function handleCalibrationIfNeeded(lat, lon, accuracy){
+    if (!calibrationMode || calibrationDone) return;
+
+    const now = Date.now();
+
+    if (calibrationStartAt === 0) {
+      calibrationStartAt = now;
+      calibrationSamples = [];
+    }
+
+    calibrationSamples.push({
+      lat,
+      lon,
+      accuracy: typeof accuracy === "number" ? accuracy : 9999
+    });
+
+    const avg = averageGpsSamples(calibrationSamples);
+
+    currentTarget.lat = avg.lat;
+    currentTarget.lon = avg.lon;
+    currentTarget.name = "Target calibrato qui";
+
+    if (now - calibrationStartAt >= CALIBRATION_MS) {
+      calibrationDone = true;
+
+      const finalAvg = averageGpsSamples(calibrationSamples);
+      currentTarget.lat = finalAvg.lat;
+      currentTarget.lon = finalAvg.lon;
+      currentTarget.name = "Target calibrato qui";
+
+      showToast(
+        `Target calibrato!\nLat ${currentTarget.lat.toFixed(7)}, Lon ${currentTarget.lon.toFixed(7)}`,
+        5000
+      );
+    }
+  }
+
+  function averageGpsSamples(samples){
+    if (!samples.length) return { lat: 0, lon: 0 };
+
+    // media pesata: i punti con accuracy migliore pesano di più
+    let sumLat = 0;
+    let sumLon = 0;
+    let sumW = 0;
+
+    samples.forEach(s => {
+      const acc = Math.max(3, s.accuracy || 9999);
+      const w = 1 / acc;
+      sumLat += s.lat * w;
+      sumLon += s.lon * w;
+      sumW += w;
+    });
+
+    return {
+      lat: sumLat / sumW,
+      lon: sumLon / sumW
+    };
   }
 
   function classify(d){
@@ -695,6 +809,14 @@
 
     const mode = getRadarMode();
 
+    const userTxt = lastUserLat !== null && lastUserLon !== null
+      ? `${lastUserLat.toFixed(7)}, ${lastUserLon.toFixed(7)}`
+      : "…";
+
+    const targetTxt = currentTarget.lat !== null && currentTarget.lon !== null
+      ? `${currentTarget.lat.toFixed(7)}, ${currentTarget.lon.toFixed(7)}`
+      : "…";
+
     const bearingTxt = absoluteBearingDeg !== null
       ? `${absoluteBearingDeg.toFixed(1)}°`
       : "…";
@@ -709,18 +831,30 @@
 
     const accuracyTxt = typeof accuracy === "number"
       ? `${accuracy.toFixed(0)} m`
-      : "…";
+      : (lastAccuracy !== null ? `${lastAccuracy.toFixed(0)} m` : "…");
 
     let movementAgeTxt = "…";
     if (lastMovementHeadingAt > 0) {
       movementAgeTxt = `${((Date.now() - lastMovementHeadingAt) / 1000).toFixed(1)}s fa`;
     }
 
+    let calibrationTxt = "";
+    if (calibrationMode) {
+      calibrationTxt = calibrationDone
+        ? "Calibrazione: COMPLETATA"
+        : `Calibrazione: in corso, campioni ${calibrationSamples.length}`;
+    } else {
+      calibrationTxt = "Calibrazione: no";
+    }
+
     debugText.textContent =
       `Modalità: ${mode}\n` +
       `Target: ${currentTarget.name}\n` +
+      `Tua posizione: ${userTxt}\n` +
+      `Coord target: ${targetTxt}\n` +
       `Bearing target: ${bearingTxt} | Direzione cammino: ${movementTxt} | Relativo: ${relativeTxt}\n` +
-      `Accuracy GPS: ${accuracyTxt} | Ultimo movimento valido: ${movementAgeTxt}`;
+      `Accuracy GPS: ${accuracyTxt} | Ultimo movimento valido: ${movementAgeTxt}\n` +
+      `${calibrationTxt}`;
   }
 
   /* ------------------ Sweep detection ------------------ */
