@@ -25,7 +25,6 @@
       overflow:hidden;
     }
 
-    /* START SCREEN */
     #enterBtn{
       width:130px;
       height:130px;
@@ -43,7 +42,6 @@
       letter-spacing:1px;
     }
 
-    /* PASSWORD SCREEN */
     #loginBox{
       display:none;
       flex-direction:column;
@@ -80,7 +78,6 @@
       font-weight:900;
     }
 
-    /* APP SCREEN */
     #app{
       display:none;
       position:relative;
@@ -96,7 +93,6 @@
       box-sizing:border-box;
     }
 
-    /* popup messaggi random */
     #toast{
       position:absolute;
       top:10px;
@@ -127,7 +123,7 @@
       height:auto;
       filter: drop-shadow(0 12px 22px rgba(0,0,0,.6));
       transition: opacity .18s ease, transform .18s ease;
-      opacity: 1;
+      opacity:1;
     }
 
     #statusText{
@@ -145,7 +141,29 @@
       white-space:pre-line;
     }
 
-    /* Radar widget */
+    #compassBtn{
+      margin-top:4px;
+      padding:8px 14px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,0.35);
+      background:rgba(255,255,255,0.10);
+      color:#fff;
+      font-weight:900;
+      letter-spacing:.5px;
+      cursor:pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #debugText{
+      margin-top:4px;
+      font-size:11px;
+      line-height:1.35;
+      opacity:.72;
+      text-align:center;
+      white-space:pre-line;
+      max-width:92vw;
+    }
+
     #radarWrap{
       margin-top:10px;
       width:200px;
@@ -170,12 +188,12 @@
       border:1px solid rgba(58,214,255,0.35);
     }
 
-    .radar__circle.inner{ 
-      inset:30%; 
+    .radar__circle.inner{
+      inset:30%;
     }
 
-    .radar__circle.inner2{ 
-      inset:46%; 
+    .radar__circle.inner2{
+      inset:46%;
     }
 
     .radar__cross{
@@ -189,7 +207,6 @@
       pointer-events:none;
     }
 
-    /* Sweep lento */
     .radar__beam{
       position:absolute;
       inset:-10%;
@@ -198,15 +215,17 @@
       pointer-events:none;
     }
 
-    @keyframes radarSpin { 
-      to { transform: rotate(360deg); } 
+    @keyframes radarSpin{
+      to{
+        transform: rotate(360deg);
+      }
     }
 
     .radar__centerDot{
       position:absolute;
-      left:50%; 
+      left:50%;
       top:50%;
-      width:8px; 
+      width:8px;
       height:8px;
       transform:translate(-50%,-50%);
       background:rgba(58,214,255,0.95);
@@ -217,25 +236,25 @@
 
     .radar__targetDot{
       position:absolute;
-      left:50%; 
+      left:50%;
       top:50%;
-      width:10px; 
+      width:10px;
       height:10px;
       transform:translate(-50%,-50%);
       border-radius:50%;
       background:rgba(255,255,255,0.95);
       box-shadow:0 0 14px rgba(255,255,255,0.65);
-      transition: transform .18s ease;
+      transition: transform .12s linear;
       z-index:5;
     }
 
-    .pop{ 
-      transform: scale(1.03); 
+    .pop{
+      transform: scale(1.03);
     }
 
     @media (prefers-reduced-motion: reduce){
-      .radar__beam{ animation: none; }
-      #statusImage{ transition: none; }
+      .radar__beam{ animation:none; }
+      #statusImage{ transition:none; }
       .radar__targetDot{ transition:none; }
       #toast{ transition:none; }
     }
@@ -256,8 +275,12 @@
     <div id="toast"></div>
 
     <img id="statusImage" src="images/ghiacciato.svg" alt="stato" />
+
     <div id="statusText">…</div>
     <div id="distanceText">Distanza: …</div>
+
+    <button id="compassBtn">ATTIVA BUSSOLA</button>
+    <div id="debugText">Debug bussola: …</div>
 
     <div id="radarWrap" aria-label="Radar">
       <div class="radar">
@@ -301,19 +324,13 @@
     "Citazione di Katy Perry"
   ];
 
-  // Deve combaciare con CSS animation: 9.0s
   const SWEEP_PERIOD_MS = 9000;
-
-  // Con conic-gradient(from 90deg) il fascio base parte verso destra: compenso con +90
   const SWEEP_OFFSET_DEG = 90;
-
-  // Quanto vicino deve essere il fascio al pallino per beepare
   const SWEEP_HIT_THRESHOLD_DEG = 10;
 
-  // Preload immagini
-  Object.values(IMG).forEach(src => { 
-    const im = new Image(); 
-    im.src = src; 
+  Object.values(IMG).forEach(src => {
+    const im = new Image();
+    im.src = src;
   });
 
   /* ------------------ DOM ------------------ */
@@ -330,38 +347,38 @@
   const statusImage = document.getElementById("statusImage");
   const toast = document.getElementById("toast");
   const targetDot = document.getElementById("targetDot");
+  const compassBtn = document.getElementById("compassBtn");
+  const debugText = document.getElementById("debugText");
 
   /* ------------------ State ------------------ */
 
   let watchId = null;
 
-  // Ultima posizione nota
   let lastUserLat = null;
   let lastUserLon = null;
   let lastDistanceMeters = null;
 
-  // Vibrazione
   let lastVibrateAt = 0;
   let lastState = null;
   let insideFuoco = false;
 
-  // Radar / beep
-  let dotAngleDeg = null;           // direzione del target relativa allo schermo: 0=su
-  let absoluteBearingDeg = null;    // bearing geografico verso target: 0=Nord
+  let dotAngleDeg = null;
+  let absoluteBearingDeg = null;
   let dotRadiusPx = 0;
   let sweepT0 = 0;
   let inHitZone = false;
   let lastBeepAt = 0;
 
-  // Bussola telefono
-  let compassHeadingDeg = 0;        // 0=Nord, 90=Est, 180=Sud, 270=Ovest
+  let compassHeadingDeg = 0;
   let compassAvailable = false;
   let compassStarted = false;
+  let compassModeEnabled = false;
+  let lastOrientationRaw = "nessun dato";
+  let lastCompassEventAt = 0;
 
-  // Audio
   let audioCtx = null;
 
-  /* ------------------ START/LOGIN handlers ------------------ */
+  /* ------------------ Start/Login ------------------ */
 
   function showLogin(){
     enterBtn.style.display = "none";
@@ -370,20 +387,29 @@
   }
 
   enterBtn.addEventListener("click", showLogin);
-  enterBtn.addEventListener("touchstart", (e) => { 
-    e.preventDefault(); 
-    showLogin(); 
+  enterBtn.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    showLogin();
   }, { passive:false });
 
   okBtn.addEventListener("click", () => tryLogin());
-  okBtn.addEventListener("touchstart", (e) => { 
-    e.preventDefault(); 
-    tryLogin(); 
+  okBtn.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    tryLogin();
   }, { passive:false });
 
-  pwd.addEventListener("keydown", (e) => { 
-    if (e.key === "Enter") tryLogin(); 
+  pwd.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") tryLogin();
   });
+
+  compassBtn.addEventListener("click", async () => {
+    await startCompass();
+  });
+
+  compassBtn.addEventListener("touchstart", async (e) => {
+    e.preventDefault();
+    await startCompass();
+  }, { passive:false });
 
   function tryLogin(){
     if (pwd.value === "4") {
@@ -404,26 +430,22 @@
     statusImage.src = IMG.GHIACCIATO;
 
     startToastLoop();
-
-    // Sblocca audio dentro gesto utente
     initAudio();
 
-    // Avvia compass mode
-    startCompass();
-
-    // Avvia loop beep sweep
     sweepT0 = performance.now();
     requestAnimationFrame(sweepLoop);
+
+    updateDebug();
 
     if (!navigator.geolocation){
       statusText.textContent = "Geolocalizzazione non supportata";
       return;
     }
 
-    const options = { 
-      enableHighAccuracy: true, 
-      maximumAge: 0, 
-      timeout: 10000 
+    const options = {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 10000
     };
 
     if (watchId !== null) {
@@ -433,7 +455,7 @@
     watchId = navigator.geolocation.watchPosition(onPos, onErr, options);
   }
 
-  /* ------------------ Toast random ogni 15s ------------------ */
+  /* ------------------ Toast ------------------ */
 
   function startToastLoop(){
     setTimeout(showRandomToast, 1200);
@@ -448,13 +470,12 @@
   }
 
   function showCompassToast(msg){
-    if (!toast) return;
     toast.textContent = msg;
     toast.classList.add("show");
     setTimeout(() => toast.classList.remove("show"), 3000);
   }
 
-  /* ------------------ Audio beep ------------------ */
+  /* ------------------ Audio ------------------ */
 
   function initAudio(){
     try{
@@ -492,7 +513,7 @@
     osc.stop(now + 0.13);
   }
 
-  /* ------------------ Geolocation update ------------------ */
+  /* ------------------ Geolocation ------------------ */
 
   function onPos(pos){
     const lat = pos.coords.latitude;
@@ -521,13 +542,9 @@
     statusText.textContent = labelFor(state);
     distanceText.textContent = `Distanza: ${d.toFixed(1)} m`;
 
-    // Radar in compass mode, con fallback north-up
     updateRadar(lat, lon, d);
-
-    // Vibrazione proporzionale ma limitata
     handleVibration(d);
 
-    // Ingresso zona FUOCO: un colpetto una volta
     const nowInside = d <= T_FUOCO;
     if (nowInside && !insideFuoco) {
       vibrateOnce([90, 60, 90]);
@@ -582,27 +599,18 @@
     lastVibrateAt = Date.now();
   }
 
-  /* ------------------ Radar target positioning ------------------ */
+  /* ------------------ Radar ------------------ */
 
   function updateRadar(userLat, userLon, distMeters){
     const Rpx = 86;
-
-    // Scala radar:
-    // entro 300 m il pallino va dal centro al bordo.
-    // oltre 300 m rimane sul bordo nella direzione corretta.
     const maxM = 300;
 
-    // Bearing geografico verso target:
-    // 0=Nord, 90=Est, 180=Sud, 270=Ovest
     const bearingDeg = bearing(userLat, userLon, TARGET_LAT, TARGET_LON);
     absoluteBearingDeg = bearingDeg;
 
-    // Compass mode:
-    // se la bussola è disponibile, il radar diventa relativo alla direzione del telefono.
-    // se non è disponibile, resta north-up.
     let relativeDeg = bearingDeg;
 
-    if (compassAvailable) {
+    if (compassAvailable && compassModeEnabled) {
       relativeDeg = normalizeDeg(bearingDeg - compassHeadingDeg);
     }
 
@@ -611,33 +619,51 @@
     const r = clamp(distMeters / maxM, 0, 1) * Rpx;
     dotRadiusPx = r;
 
-    // Conversione angolo -> coordinate radar:
-    // 0° = alto, 90° = destra, 180° = basso, 270° = sinistra
     const ang = relativeDeg * Math.PI / 180;
     const x = r * Math.sin(ang);
     const y = -r * Math.cos(ang);
 
     targetDot.style.transform =
       `translate(-50%, -50%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+
+    updateDebug();
   }
 
   /* ------------------ Compass mode ------------------ */
 
   async function startCompass(){
-    if (compassStarted) return;
-    compassStarted = true;
+    if (compassStarted) {
+      showCompassToast("Bussola già attiva.");
+      updateDebug();
+      return;
+    }
 
     try {
-      // iPhone/iPad: da iOS 13+ serve permesso esplicito
+      const permissionRequests = [];
+
       if (
         typeof DeviceOrientationEvent !== "undefined" &&
         typeof DeviceOrientationEvent.requestPermission === "function"
       ) {
-        const permission = await DeviceOrientationEvent.requestPermission();
+        permissionRequests.push(DeviceOrientationEvent.requestPermission());
+      }
 
-        if (permission !== "granted") {
+      if (
+        typeof DeviceMotionEvent !== "undefined" &&
+        typeof DeviceMotionEvent.requestPermission === "function"
+      ) {
+        permissionRequests.push(DeviceMotionEvent.requestPermission());
+      }
+
+      if (permissionRequests.length > 0) {
+        const results = await Promise.all(permissionRequests);
+
+        const denied = results.some(result => result !== "granted");
+        if (denied) {
           compassAvailable = false;
+          compassModeEnabled = false;
           showCompassToast("Bussola non autorizzata: radar in modalità Nord.");
+          updateDebug();
           return;
         }
       }
@@ -645,44 +671,96 @@
       window.addEventListener("deviceorientation", onDeviceOrientation, true);
       window.addEventListener("deviceorientationabsolute", onDeviceOrientation, true);
 
-      showCompassToast("Compass mode attivo.");
+      compassStarted = true;
+      compassModeEnabled = true;
+
+      showCompassToast("Bussola attivata. Muovi il telefono a forma di 8.");
+      updateDebug();
+
     } catch (e) {
       compassAvailable = false;
+      compassModeEnabled = false;
       showCompassToast("Bussola non disponibile: radar in modalità Nord.");
+      updateDebug();
     }
   }
 
   function onDeviceOrientation(event){
     let heading = null;
+    let source = "";
 
-    // iOS Safari:
-    // webkitCompassHeading: 0=Nord, 90=Est, 180=Sud, 270=Ovest
+    const alphaVal = typeof event.alpha === "number" ? event.alpha.toFixed(1) : "null";
+    const betaVal = typeof event.beta === "number" ? event.beta.toFixed(1) : "null";
+    const gammaVal = typeof event.gamma === "number" ? event.gamma.toFixed(1) : "null";
+    const absVal = event.absolute === true ? "true" : "false";
+
     if (typeof event.webkitCompassHeading === "number") {
       heading = event.webkitCompassHeading;
-    }
-
-    // Android/Chrome:
-    // spesso alpha cresce in senso opposto, quindi si usa 360 - alpha.
-    else if (typeof event.alpha === "number") {
+      source = "webkitCompassHeading/iOS";
+    } else if (event.absolute === true && typeof event.alpha === "number") {
       heading = 360 - event.alpha;
+      source = "alpha absolute Android";
+    } else if (typeof event.alpha === "number") {
+      heading = 360 - event.alpha;
+      source = "alpha fallback";
     }
 
-    if (heading === null || Number.isNaN(heading)) return;
+    lastOrientationRaw =
+      `src: ${source || "nessuna"} | alpha:${alphaVal} beta:${betaVal} gamma:${gammaVal} abs:${absVal}`;
+
+    lastCompassEventAt = Date.now();
+
+    if (heading === null || Number.isNaN(heading)) {
+      compassAvailable = false;
+      updateDebug();
+      return;
+    }
 
     compassHeadingDeg = normalizeDeg(heading);
     compassAvailable = true;
+    compassModeEnabled = true;
 
-    // Se abbiamo già una posizione, aggiorna subito il pallino anche restando fermi.
     if (lastUserLat !== null && lastUserLon !== null && lastDistanceMeters !== null) {
       updateRadar(lastUserLat, lastUserLon, lastDistanceMeters);
     }
+
+    updateDebug();
+  }
+
+  function updateDebug(){
+    if (!debugText) return;
+
+    const mode = compassAvailable && compassModeEnabled ? "COMPASS" : "NORD";
+
+    const headingTxt = compassAvailable
+      ? `${compassHeadingDeg.toFixed(1)}°`
+      : "non disponibile";
+
+    const bearingTxt = absoluteBearingDeg !== null
+      ? `${absoluteBearingDeg.toFixed(1)}°`
+      : "…";
+
+    const relativeTxt = dotAngleDeg !== null
+      ? `${dotAngleDeg.toFixed(1)}°`
+      : "…";
+
+    let ageTxt = "nessun evento";
+    if (lastCompassEventAt > 0) {
+      ageTxt = `${((Date.now() - lastCompassEventAt) / 1000).toFixed(1)}s fa`;
+    }
+
+    debugText.textContent =
+      `Modalità: ${mode}\n` +
+      `Heading telefono: ${headingTxt} | Bearing target: ${bearingTxt} | Relativo: ${relativeTxt}\n` +
+      `Ultimo evento bussola: ${ageTxt}\n` +
+      `${lastOrientationRaw}`;
   }
 
   function normalizeDeg(deg){
     return ((deg % 360) + 360) % 360;
   }
 
-  /* ------------------ Sweep detection loop ------------------ */
+  /* ------------------ Sweep detection ------------------ */
 
   function sweepLoop(t){
     if (dotAngleDeg !== null) {
@@ -715,7 +793,7 @@
     return d;
   }
 
-  /* ------------------ Helpers: distance & bearing ------------------ */
+  /* ------------------ Helpers ------------------ */
 
   function haversineMeters(lat1, lon1, lat2, lon2){
     const R = 6371000;
@@ -750,8 +828,8 @@
     return normalizeDeg(toDeg(theta));
   }
 
-  function clamp(v, a, b){ 
-    return Math.max(a, Math.min(b, v)); 
+  function clamp(v, a, b){
+    return Math.max(a, Math.min(b, v));
   }
 </script>
 
