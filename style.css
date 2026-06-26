@@ -1,0 +1,20 @@
+#compassBtn{
+  margin-top:4px;
+  padding:8px 14px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.35);
+  background:rgba(255,255,255,0.10);
+  color:#fff;
+  font-weight:900;
+  letter-spacing:.5px;
+}
+
+#debugText{
+  margin-top:4px;
+  font-size:11px;
+  line-height:1.35;
+  opacity:.72;
+  text-align:center;
+  white-space:pre-line;
+  max-width:92vw;
+}
