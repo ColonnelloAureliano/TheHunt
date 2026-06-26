@@ -2,109 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>The Hunt</title>
-
-  <style>
-    :root{
-      --bg:#000;
-      --fg:#fff;
-      --accent:#3ad6ff;
-      --danger:#ff4b4b;
-    }
-
-    body{
-      margin:0;
-      height:100vh;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-family: Arial, sans-serif;
-      background:#fff;
-      color:#111;
-      overflow:hidden;
-    }
-
-    #enterBtn{
-      width:130px;
-      height:130px;
-      border-radius:50%;
-      background:#000;
-      color:#fff;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      cursor:pointer;
-      user-select:none;
-      -webkit-tap-highlight-color: transparent;
-      font-size:20px;
-      font-weight:900;
-      letter-spacing:1px;
-    }
-
-    #loginBox{
-      display:none;
-      flex-direction:column;
-      align-items:center;
-      gap:10px;
-    }
-
-    #password{
-      width:min(300px, 82vw);
-      padding:12px 14px;
-      font-size:16px;
-      border-radius:12px;
-      border:1px solid #ddd;
-      outline:none;
-      text-align:center;
-      box-shadow:0 10px 30px rgba(0,0,0,.08);
-    }
-
-    #okBtn{
-      padding:10px 18px;
-      border-radius:12px;
-      border:none;
-      cursor:pointer;
-      font-size:16px;
-      background:#111;
-      color:#fff;
-      font-weight:800;
-    }
-
-    #errorMsg{
-      display:none;
-      color:var(--danger);
-      font-size:14px;
-      font-weight:900;
-    }
-
-    #app{
-      display:none;
-      position:relative;
-      width:100%;
-      height:100%;
-      background:var(--bg);
-      color:var(--fg);
-      align-items:center;
-      justify-content:center;
-      flex-direction:column;
-      gap:10px;
-      padding:18px 18px 22px;
-      box-sizing:border-box;
-    }
-
-    #toast{
-      position:absolute;
-      top:10px;
-      left:50%;
-      transform:translateX(-50%);
-      max-width:min(680px, 92vw);
-      padding:10px 14px;
-      border-radius:14px;
-      background:rgba(255,255,255,0.10);
-      border:1px solid rgba(255,255,255,0.18);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
+  <meta name="viewport-backdrop-filter: blur(6px);  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
       font-weight:800;
       text-align:center;
       opacity:0;
@@ -279,19 +177,22 @@
       name: "Chiosco da Friz",
       lat: 45.8592048,
       lon: 9.3842831,
-      calibration: false
+      calibration: false,
+      showDot: false
     },
     "0": {
-      name: "Officina Badoni - coordinate indicative",
-      lat: 45.85605,
-      lon: 9.39715,
-      calibration: false
+      name: "Officina Badoni",
+      lat: 45.8581136,
+      lon: 9.3942662,
+      calibration: false,
+      showDot: true
     },
     "9": {
       name: "Calibrazione posizione attuale",
       lat: null,
       lon: null,
-      calibration: true
+      calibration: true,
+      showDot: true
     }
   };
 
@@ -305,8 +206,6 @@
 
   const MIN_MOVEMENT_METERS = 4.0;
   const MOVEMENT_TIMEOUT_MS = 15000;
-
-  // Password 9: tempo di media GPS per settare target corrente
   const CALIBRATION_MS = 5000;
 
   const IMG = {
@@ -380,11 +279,13 @@
 
   let audioCtx = null;
 
-  // Calibrazione password 9
   let calibrationMode = false;
   let calibrationDone = false;
   let calibrationStartAt = 0;
   let calibrationSamples = [];
+
+  let toastIntervalId = null;
+  let sweepLoopStarted = false;
 
   /* ------------------ Start/Login ------------------ */
 
@@ -470,7 +371,10 @@
     initAudio();
 
     sweepT0 = performance.now();
-    requestAnimationFrame(sweepLoop);
+    if (!sweepLoopStarted) {
+      sweepLoopStarted = true;
+      requestAnimationFrame(sweepLoop);
+    }
 
     updateDebug();
 
@@ -493,15 +397,17 @@
     watchId = navigator.geolocation.watchPosition(onPos, onErr, options);
 
     if (calibrationMode) {
-      showToast("Calibrazione GPS: resta fermo circa 5 secondi.");
+      showToast("Calibrazione GPS: resta fermo circa 5 secondi.", 4000);
     }
   }
 
   /* ------------------ Toast ------------------ */
 
   function startToastLoop(){
+    if (toastIntervalId !== null) return;
+
     setTimeout(showRandomToast, 1200);
-    setInterval(showRandomToast, 15000);
+    toastIntervalId = setInterval(showRandomToast, 15000);
   }
 
   function showRandomToast(){
@@ -653,6 +559,7 @@
     currentTarget.lat = avg.lat;
     currentTarget.lon = avg.lon;
     currentTarget.name = "Target calibrato qui";
+    currentTarget.showDot = true;
 
     if (now - calibrationStartAt >= CALIBRATION_MS) {
       calibrationDone = true;
@@ -661,6 +568,7 @@
       currentTarget.lat = finalAvg.lat;
       currentTarget.lon = finalAvg.lon;
       currentTarget.name = "Target calibrato qui";
+      currentTarget.showDot = true;
 
       showToast(
         `Target calibrato!\nLat ${currentTarget.lat.toFixed(7)}, Lon ${currentTarget.lon.toFixed(7)}`,
@@ -672,7 +580,6 @@
   function averageGpsSamples(samples){
     if (!samples.length) return { lat: 0, lon: 0 };
 
-    // media pesata: i punti con accuracy migliore pesano di più
     let sumLat = 0;
     let sumLon = 0;
     let sumW = 0;
@@ -745,9 +652,14 @@
   }
 
   function getRadarMode(){
+    if (currentTarget.showDot === false) {
+      return "SOLO DISTANZA";
+    }
+
     if (movementHeadingDeg !== null) {
       return "MOVIMENTO GPS";
     }
+
     return "NORD";
   }
 
@@ -777,11 +689,23 @@
   /* ------------------ Radar ------------------ */
 
   function updateRadar(userLat, userLon, distMeters, accuracy){
-    const Rpx = 86;
-    const maxM = 300;
-
     const targetBearingDeg = bearing(userLat, userLon, currentTarget.lat, currentTarget.lon);
     absoluteBearingDeg = targetBearingDeg;
+
+    // Modalità Chiosco da Friz:
+    // radar solo estetico, niente puntino e niente beep target.
+    if (currentTarget.showDot === false) {
+      targetDot.style.display = "none";
+      dotAngleDeg = null;
+      dotRadiusPx = 0;
+      updateDebug(accuracy);
+      return;
+    }
+
+    targetDot.style.display = "block";
+
+    const Rpx = 86;
+    const maxM = 300;
 
     let relativeDeg = targetBearingDeg;
 
@@ -825,9 +749,9 @@
       ? `${movementHeadingDeg.toFixed(1)}°`
       : "non disponibile";
 
-    const relativeTxt = dotAngleDeg !== null
-      ? `${dotAngleDeg.toFixed(1)}°`
-      : "…";
+    const relativeTxt = currentTarget.showDot === false
+      ? "puntino nascosto"
+      : (dotAngleDeg !== null ? `${dotAngleDeg.toFixed(1)}°` : "…");
 
     const accuracyTxt = typeof accuracy === "number"
       ? `${accuracy.toFixed(0)} m`
@@ -860,7 +784,7 @@
   /* ------------------ Sweep detection ------------------ */
 
   function sweepLoop(t){
-    if (dotAngleDeg !== null) {
+    if (dotAngleDeg !== null && currentTarget.showDot !== false) {
       const elapsed = (t - sweepT0) % SWEEP_PERIOD_MS;
       const sweepRotDeg = (elapsed / SWEEP_PERIOD_MS) * 360;
       const beamDirDeg = (sweepRotDeg + SWEEP_OFFSET_DEG) % 360;
@@ -941,3 +865,105 @@
 
 </body>
 </html>
+  <title>The Hunt</title>
+
+  <style>
+    :root{
+      --bg:#000;
+      --fg:#fff;
+      --accent:#3ad6ff;
+      --danger:#ff4b4b;
+    }
+
+    body{
+      margin:0;
+      height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-family: Arial, sans-serif;
+      background:#fff;
+      color:#111;
+      overflow:hidden;
+    }
+
+    #enterBtn{
+      width:130px;
+      height:130px;
+      border-radius:50%;
+      background:#000;
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+      font-size:20px;
+      font-weight:900;
+      letter-spacing:1px;
+    }
+
+    #loginBox{
+      display:none;
+      flex-direction:column;
+      align-items:center;
+      gap:10px;
+    }
+
+    #password{
+      width:min(300px, 82vw);
+      padding:12px 14px;
+      font-size:16px;
+      border-radius:12px;
+      border:1px solid #ddd;
+      outline:none;
+      text-align:center;
+      box-shadow:0 10px 30px rgba(0,0,0,.08);
+    }
+
+    #okBtn{
+      padding:10px 18px;
+      border-radius:12px;
+      border:none;
+      cursor:pointer;
+      font-size:16px;
+      background:#111;
+      color:#fff;
+      font-weight:800;
+    }
+
+    #errorMsg{
+      display:none;
+      color:var(--danger);
+      font-size:14px;
+      font-weight:900;
+    }
+
+    #app{
+      display:none;
+      position:relative;
+      width:100%;
+      height:100%;
+      background:var(--bg);
+      color:var(--fg);
+      align-items:center;
+      justify-content:center;
+      flex-direction:column;
+      gap:10px;
+      padding:18px 18px 22px;
+      box-sizing:border-box;
+    }
+
+    #toast{
+      position:absolute;
+      top:10px;
+      left:50%;
+      transform:translateX(-50%);
+      max-width:min(680px, 92vw);
+      padding:10px 14px;
+      border-radius:14px;
+      background:rgba(255,255,255,0.10);
+      border:1px solid rgba(255,255,255,0.18);
+      backdrop-filter: blur(6px);
+
