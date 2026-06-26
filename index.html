@@ -141,19 +141,6 @@
       white-space:pre-line;
     }
 
-    #compassBtn{
-      margin-top:4px;
-      padding:8px 14px;
-      border-radius:999px;
-      border:1px solid rgba(255,255,255,0.35);
-      background:rgba(255,255,255,0.10);
-      color:#fff;
-      font-weight:900;
-      letter-spacing:.5px;
-      cursor:pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-
     #debugText{
       margin-top:4px;
       font-size:11px;
@@ -244,7 +231,7 @@
       border-radius:50%;
       background:rgba(255,255,255,0.95);
       box-shadow:0 0 14px rgba(255,255,255,0.65);
-      transition: transform .12s linear;
+      transition: transform .18s linear;
       z-index:5;
     }
 
@@ -278,9 +265,7 @@
 
     <div id="statusText">…</div>
     <div id="distanceText">Distanza: …</div>
-
-    <button id="compassBtn">ATTIVA BUSSOLA</button>
-    <div id="debugText">Debug bussola: …</div>
+    <div id="debugText">Debug: …</div>
 
     <div id="radarWrap" aria-label="Radar">
       <div class="radar">
@@ -296,15 +281,31 @@
   </div>
 
 <script>
-  /* ------------------ Config ------------------ */
+  /* ------------------ Target selezionabili ------------------ */
 
-  // Target: Chiosco da Friz, Lungolago di Lecco
-  const TARGET_LAT = 45.8592048;
-  const TARGET_LON = 9.3842831;
+  const TARGETS = {
+    "4": {
+      name: "Chiosco da Friz",
+      lat: 45.8592048,
+      lon: 9.3842831
+    },
+    "0": {
+      name: "Officina Badoni",
+      lat: 45.85605,
+      lon: 9.39715
+    }
+  };
+
+  let currentTarget = TARGETS["4"];
+
+  /* ------------------ Config ------------------ */
 
   const T_FUOCO = 10;
   const T_FUOCHINO = 25;
   const T_FREDDO = 100;
+
+  const MIN_MOVEMENT_METERS = 4.0;
+  const MOVEMENT_TIMEOUT_MS = 15000;
 
   const IMG = {
     GHIACCIATO: "images/ghiacciato.svg",
@@ -347,7 +348,6 @@
   const statusImage = document.getElementById("statusImage");
   const toast = document.getElementById("toast");
   const targetDot = document.getElementById("targetDot");
-  const compassBtn = document.getElementById("compassBtn");
   const debugText = document.getElementById("debugText");
 
   /* ------------------ State ------------------ */
@@ -357,6 +357,12 @@
   let lastUserLat = null;
   let lastUserLon = null;
   let lastDistanceMeters = null;
+
+  let movementRefLat = null;
+  let movementRefLon = null;
+
+  let movementHeadingDeg = null;
+  let lastMovementHeadingAt = 0;
 
   let lastVibrateAt = 0;
   let lastState = null;
@@ -368,13 +374,6 @@
   let sweepT0 = 0;
   let inHitZone = false;
   let lastBeepAt = 0;
-
-  let compassHeadingDeg = 0;
-  let compassAvailable = false;
-  let compassStarted = false;
-  let compassModeEnabled = false;
-  let lastOrientationRaw = "nessun dato";
-  let lastCompassEventAt = 0;
 
   let audioCtx = null;
 
@@ -402,17 +401,11 @@
     if (e.key === "Enter") tryLogin();
   });
 
-  compassBtn.addEventListener("click", async () => {
-    await startCompass();
-  });
-
-  compassBtn.addEventListener("touchstart", async (e) => {
-    e.preventDefault();
-    await startCompass();
-  }, { passive:false });
-
   function tryLogin(){
-    if (pwd.value === "4") {
+    const code = pwd.value.trim();
+
+    if (TARGETS[code]) {
+      currentTarget = TARGETS[code];
       err.style.display = "none";
       startApp();
     } else {
@@ -420,13 +413,36 @@
     }
   }
 
+  function resetTrackingState(){
+    lastUserLat = null;
+    lastUserLon = null;
+    lastDistanceMeters = null;
+
+    movementRefLat = null;
+    movementRefLon = null;
+    movementHeadingDeg = null;
+    lastMovementHeadingAt = 0;
+
+    lastVibrateAt = 0;
+    lastState = null;
+    insideFuoco = false;
+
+    dotAngleDeg = null;
+    absoluteBearingDeg = null;
+    dotRadiusPx = 0;
+    inHitZone = false;
+    lastBeepAt = 0;
+  }
+
   function startApp(){
+    resetTrackingState();
+
     loginBox.style.display = "none";
     document.body.style.background = "#000";
     app.style.display = "flex";
 
     statusText.textContent = "…";
-    distanceText.textContent = "Distanza: …";
+    distanceText.textContent = `Target: ${currentTarget.name}\nDistanza: …`;
     statusImage.src = IMG.GHIACCIATO;
 
     startToastLoop();
@@ -439,6 +455,7 @@
 
     if (!navigator.geolocation){
       statusText.textContent = "Geolocalizzazione non supportata";
+      distanceText.textContent = "Il browser non supporta la posizione GPS.";
       return;
     }
 
@@ -467,12 +484,6 @@
     toast.textContent = msg;
     toast.classList.add("show");
     setTimeout(() => toast.classList.remove("show"), 3500);
-  }
-
-  function showCompassToast(msg){
-    toast.textContent = msg;
-    toast.classList.add("show");
-    setTimeout(() => toast.classList.remove("show"), 3000);
   }
 
   /* ------------------ Audio ------------------ */
@@ -518,11 +529,15 @@
   function onPos(pos){
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
-    const d = haversineMeters(lat, lon, TARGET_LAT, TARGET_LON);
+    const accuracy = pos.coords.accuracy;
+
+    const d = haversineMeters(lat, lon, currentTarget.lat, currentTarget.lon);
 
     lastUserLat = lat;
     lastUserLon = lon;
     lastDistanceMeters = d;
+
+    updateMovementHeading(lat, lon);
 
     const state = classify(d);
 
@@ -540,9 +555,9 @@
     }
 
     statusText.textContent = labelFor(state);
-    distanceText.textContent = `Distanza: ${d.toFixed(1)} m`;
+    distanceText.textContent = `Target: ${currentTarget.name}\nDistanza: ${d.toFixed(1)} m`;
 
-    updateRadar(lat, lon, d);
+    updateRadar(lat, lon, d, accuracy);
     handleVibration(d);
 
     const nowInside = d <= T_FUOCO;
@@ -557,6 +572,8 @@
 
     if (error && error.message) {
       distanceText.textContent = error.message;
+    } else {
+      distanceText.textContent = "Errore GPS.";
     }
   }
 
@@ -574,6 +591,50 @@
       case "FREDDO": return "FREDDO 🧊";
       default: return "GHIACCIATO ❄️";
     }
+  }
+
+  /* ------------------ GPS Movement Mode ------------------ */
+
+  function updateMovementHeading(lat, lon){
+    const now = Date.now();
+
+    if (movementRefLat === null || movementRefLon === null) {
+      movementRefLat = lat;
+      movementRefLon = lon;
+      return;
+    }
+
+    const moved = haversineMeters(movementRefLat, movementRefLon, lat, lon);
+
+    if (moved >= MIN_MOVEMENT_METERS) {
+      const newHeading = bearing(movementRefLat, movementRefLon, lat, lon);
+
+      if (movementHeadingDeg === null) {
+        movementHeadingDeg = newHeading;
+      } else {
+        movementHeadingDeg = smoothAngle(movementHeadingDeg, newHeading, 0.35);
+      }
+
+      lastMovementHeadingAt = now;
+
+      movementRefLat = lat;
+      movementRefLon = lon;
+    }
+
+    if (
+      movementHeadingDeg !== null &&
+      lastMovementHeadingAt > 0 &&
+      now - lastMovementHeadingAt > MOVEMENT_TIMEOUT_MS
+    ) {
+      movementHeadingDeg = null;
+    }
+  }
+
+  function getRadarMode(){
+    if (movementHeadingDeg !== null) {
+      return "MOVIMENTO GPS";
+    }
+    return "NORD";
   }
 
   /* ------------------ Vibrazione ------------------ */
@@ -601,17 +662,17 @@
 
   /* ------------------ Radar ------------------ */
 
-  function updateRadar(userLat, userLon, distMeters){
+  function updateRadar(userLat, userLon, distMeters, accuracy){
     const Rpx = 86;
     const maxM = 300;
 
-    const bearingDeg = bearing(userLat, userLon, TARGET_LAT, TARGET_LON);
-    absoluteBearingDeg = bearingDeg;
+    const targetBearingDeg = bearing(userLat, userLon, currentTarget.lat, currentTarget.lon);
+    absoluteBearingDeg = targetBearingDeg;
 
-    let relativeDeg = bearingDeg;
+    let relativeDeg = targetBearingDeg;
 
-    if (compassAvailable && compassModeEnabled) {
-      relativeDeg = normalizeDeg(bearingDeg - compassHeadingDeg);
+    if (movementHeadingDeg !== null) {
+      relativeDeg = normalizeDeg(targetBearingDeg - movementHeadingDeg);
     }
 
     dotAngleDeg = relativeDeg;
@@ -626,138 +687,40 @@
     targetDot.style.transform =
       `translate(-50%, -50%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
 
-    updateDebug();
+    updateDebug(accuracy);
   }
 
-  /* ------------------ Compass mode ------------------ */
-
-  async function startCompass(){
-    if (compassStarted) {
-      showCompassToast("Bussola già attiva.");
-      updateDebug();
-      return;
-    }
-
-    try {
-      const permissionRequests = [];
-
-      if (
-        typeof DeviceOrientationEvent !== "undefined" &&
-        typeof DeviceOrientationEvent.requestPermission === "function"
-      ) {
-        permissionRequests.push(DeviceOrientationEvent.requestPermission());
-      }
-
-      if (
-        typeof DeviceMotionEvent !== "undefined" &&
-        typeof DeviceMotionEvent.requestPermission === "function"
-      ) {
-        permissionRequests.push(DeviceMotionEvent.requestPermission());
-      }
-
-      if (permissionRequests.length > 0) {
-        const results = await Promise.all(permissionRequests);
-
-        const denied = results.some(result => result !== "granted");
-        if (denied) {
-          compassAvailable = false;
-          compassModeEnabled = false;
-          showCompassToast("Bussola non autorizzata: radar in modalità Nord.");
-          updateDebug();
-          return;
-        }
-      }
-
-      window.addEventListener("deviceorientation", onDeviceOrientation, true);
-      window.addEventListener("deviceorientationabsolute", onDeviceOrientation, true);
-
-      compassStarted = true;
-      compassModeEnabled = true;
-
-      showCompassToast("Bussola attivata. Muovi il telefono a forma di 8.");
-      updateDebug();
-
-    } catch (e) {
-      compassAvailable = false;
-      compassModeEnabled = false;
-      showCompassToast("Bussola non disponibile: radar in modalità Nord.");
-      updateDebug();
-    }
-  }
-
-  function onDeviceOrientation(event){
-    let heading = null;
-    let source = "";
-
-    const alphaVal = typeof event.alpha === "number" ? event.alpha.toFixed(1) : "null";
-    const betaVal = typeof event.beta === "number" ? event.beta.toFixed(1) : "null";
-    const gammaVal = typeof event.gamma === "number" ? event.gamma.toFixed(1) : "null";
-    const absVal = event.absolute === true ? "true" : "false";
-
-    if (typeof event.webkitCompassHeading === "number") {
-      heading = event.webkitCompassHeading;
-      source = "webkitCompassHeading/iOS";
-    } else if (event.absolute === true && typeof event.alpha === "number") {
-      heading = 360 - event.alpha;
-      source = "alpha absolute Android";
-    } else if (typeof event.alpha === "number") {
-      heading = 360 - event.alpha;
-      source = "alpha fallback";
-    }
-
-    lastOrientationRaw =
-      `src: ${source || "nessuna"} | alpha:${alphaVal} beta:${betaVal} gamma:${gammaVal} abs:${absVal}`;
-
-    lastCompassEventAt = Date.now();
-
-    if (heading === null || Number.isNaN(heading)) {
-      compassAvailable = false;
-      updateDebug();
-      return;
-    }
-
-    compassHeadingDeg = normalizeDeg(heading);
-    compassAvailable = true;
-    compassModeEnabled = true;
-
-    if (lastUserLat !== null && lastUserLon !== null && lastDistanceMeters !== null) {
-      updateRadar(lastUserLat, lastUserLon, lastDistanceMeters);
-    }
-
-    updateDebug();
-  }
-
-  function updateDebug(){
+  function updateDebug(accuracy){
     if (!debugText) return;
 
-    const mode = compassAvailable && compassModeEnabled ? "COMPASS" : "NORD";
-
-    const headingTxt = compassAvailable
-      ? `${compassHeadingDeg.toFixed(1)}°`
-      : "non disponibile";
+    const mode = getRadarMode();
 
     const bearingTxt = absoluteBearingDeg !== null
       ? `${absoluteBearingDeg.toFixed(1)}°`
       : "…";
 
+    const movementTxt = movementHeadingDeg !== null
+      ? `${movementHeadingDeg.toFixed(1)}°`
+      : "non disponibile";
+
     const relativeTxt = dotAngleDeg !== null
       ? `${dotAngleDeg.toFixed(1)}°`
       : "…";
 
-    let ageTxt = "nessun evento";
-    if (lastCompassEventAt > 0) {
-      ageTxt = `${((Date.now() - lastCompassEventAt) / 1000).toFixed(1)}s fa`;
+    const accuracyTxt = typeof accuracy === "number"
+      ? `${accuracy.toFixed(0)} m`
+      : "…";
+
+    let movementAgeTxt = "…";
+    if (lastMovementHeadingAt > 0) {
+      movementAgeTxt = `${((Date.now() - lastMovementHeadingAt) / 1000).toFixed(1)}s fa`;
     }
 
     debugText.textContent =
       `Modalità: ${mode}\n` +
-      `Heading telefono: ${headingTxt} | Bearing target: ${bearingTxt} | Relativo: ${relativeTxt}\n` +
-      `Ultimo evento bussola: ${ageTxt}\n` +
-      `${lastOrientationRaw}`;
-  }
-
-  function normalizeDeg(deg){
-    return ((deg % 360) + 360) % 360;
+      `Target: ${currentTarget.name}\n` +
+      `Bearing target: ${bearingTxt} | Direzione cammino: ${movementTxt} | Relativo: ${relativeTxt}\n` +
+      `Accuracy GPS: ${accuracyTxt} | Ultimo movimento valido: ${movementAgeTxt}`;
   }
 
   /* ------------------ Sweep detection ------------------ */
@@ -828,8 +791,17 @@
     return normalizeDeg(toDeg(theta));
   }
 
+  function normalizeDeg(deg){
+    return ((deg % 360) + 360) % 360;
+  }
+
   function clamp(v, a, b){
     return Math.max(a, Math.min(b, v));
+  }
+
+  function smoothAngle(currentDeg, targetDeg, factor){
+    const diff = ((targetDeg - currentDeg + 540) % 360) - 180;
+    return normalizeDeg(currentDeg + diff * factor);
   }
 </script>
 
