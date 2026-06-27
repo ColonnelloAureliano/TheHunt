@@ -2,13 +2,116 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport-backdrop-filter: blur(6px);  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>The Hunt</title>
+
+  <style>
+    :root{
+      --bg:#000;
+      --fg:#fff;
+      --accent:#3ad6ff;
+      --danger:#ff4b4b;
+    }
+
+    body{
+      margin:0;
+      height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-family: Arial, sans-serif;
+      background:#fff;
+      color:#111;
+      overflow:hidden;
+    }
+
+    #enterBtn{
+      width:130px;
+      height:130px;
+      border-radius:50%;
+      background:#000;
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+      font-size:20px;
+      font-weight:900;
+      letter-spacing:1px;
+    }
+
+    #loginBox{
+      display:none;
+      flex-direction:column;
+      align-items:center;
+      gap:10px;
+    }
+
+    #password{
+      width:min(300px, 82vw);
+      padding:12px 14px;
+      font-size:16px;
+      border-radius:12px;
+      border:1px solid #ddd;
+      outline:none;
+      text-align:center;
+      box-shadow:0 10px 30px rgba(0,0,0,.08);
+    }
+
+    #okBtn{
+      padding:10px 18px;
+      border-radius:12px;
+      border:none;
+      cursor:pointer;
+      font-size:16px;
+      background:#111;
+      color:#fff;
+      font-weight:800;
+    }
+
+    #errorMsg{
+      display:none;
+      color:var(--danger);
+      font-size:14px;
+      font-weight:900;
+    }
+
+    #app{
+      display:none;
+      position:relative;
+      width:100%;
+      height:100%;
+      background:var(--bg);
+      color:var(--fg);
+      align-items:center;
+      justify-content:center;
+      flex-direction:column;
+      gap:10px;
+      padding:18px 18px 22px;
+      box-sizing:border-box;
+    }
+
+    #toast{
+      position:absolute;
+      top:10px;
+      left:50%;
+      transform:translateX(-50%);
+      max-width:min(680px, 92vw);
+      padding:10px 14px;
+      border-radius:14px;
+      background:rgba(255,255,255,0.10);
+      border:1px solid rgba(255,255,255,0.18);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       font-weight:800;
       text-align:center;
       opacity:0;
       pointer-events:none;
       transition: opacity .35s ease, transform .35s ease;
       z-index:20;
+      white-space:pre-line;
     }
 
     #toast.show{
@@ -47,6 +150,25 @@
       text-align:center;
       white-space:pre-line;
       max-width:92vw;
+    }
+
+    #configOutput{
+      display:none;
+      width:min(520px, 92vw);
+      max-height:150px;
+      overflow:auto;
+      margin:4px 0 0;
+      padding:10px;
+      box-sizing:border-box;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,0.25);
+      background:rgba(255,255,255,0.085);
+      color:#dff8ff;
+      font-size:11px;
+      line-height:1.35;
+      white-space:pre-wrap;
+      user-select:text;
+      -webkit-user-select:text;
     }
 
     #radarWrap{
@@ -155,6 +277,7 @@
     <div id="statusText">…</div>
     <div id="distanceText">Distanza: …</div>
     <div id="debugText">Debug: …</div>
+    <pre id="configOutput"></pre>
 
     <div id="radarWrap" aria-label="Radar">
       <div class="radar">
@@ -170,16 +293,67 @@
   </div>
 
 <script>
+  /* ------------------ Config esterna ------------------ */
+
+  const DEFAULT_CONFIG = {
+    friz: {
+      name: "Chiosco da Friz",
+      lat: 45.8592048,
+      lon: 9.3842831
+    }
+  };
+
+  let appConfig = structuredCloneSafe(DEFAULT_CONFIG);
+  let configLoadedFromFile = false;
+
+  async function loadConfig(){
+    try {
+      const response = await fetch("config.json?v=" + Date.now(), { cache: "no-store" });
+      if (!response.ok) throw new Error("config.json non trovato");
+
+      const cfg = await response.json();
+
+      if (
+        cfg &&
+        cfg.friz &&
+        Number.isFinite(Number(cfg.friz.lat)) &&
+        Number.isFinite(Number(cfg.friz.lon))
+      ) {
+        appConfig = {
+          friz: {
+            name: cfg.friz.name || "Chiosco da Friz",
+            lat: Number(cfg.friz.lat),
+            lon: Number(cfg.friz.lon)
+          }
+        };
+        configLoadedFromFile = true;
+        return;
+      }
+
+      throw new Error("config.json non valido");
+    } catch(e) {
+      appConfig = structuredCloneSafe(DEFAULT_CONFIG);
+      configLoadedFromFile = false;
+    }
+  }
+
+  function structuredCloneSafe(obj){
+    return JSON.parse(JSON.stringify(obj));
+  }
+
+  function makeFrizTargetFromConfig(){
+    return {
+      name: appConfig.friz.name || "Chiosco da Friz",
+      lat: appConfig.friz.lat,
+      lon: appConfig.friz.lon,
+      calibration: false,
+      showDot: false
+    };
+  }
+
   /* ------------------ Target selezionabili ------------------ */
 
   const TARGETS = {
-    "4": {
-      name: "Chiosco da Friz",
-      lat: 45.8592048,
-      lon: 9.3842831,
-      calibration: false,
-      showDot: false
-    },
     "0": {
       name: "Officina Badoni",
       lat: 45.8581136,
@@ -188,7 +362,7 @@
       showDot: true
     },
     "9": {
-      name: "Calibrazione posizione attuale",
+      name: "Calibrazione Chiosco da Friz",
       lat: null,
       lon: null,
       calibration: true,
@@ -196,9 +370,9 @@
     }
   };
 
-  let currentTarget = { ...TARGETS["4"] };
+  let currentTarget = makeFrizTargetFromConfig();
 
-  /* ------------------ Config ------------------ */
+  /* ------------------ Config gioco ------------------ */
 
   const T_FUOCO = 10;
   const T_FUOCHINO = 25;
@@ -250,6 +424,7 @@
   const toast = document.getElementById("toast");
   const targetDot = document.getElementById("targetDot");
   const debugText = document.getElementById("debugText");
+  const configOutput = document.getElementById("configOutput");
 
   /* ------------------ State ------------------ */
 
@@ -287,6 +462,10 @@
   let toastIntervalId = null;
   let sweepLoopStarted = false;
 
+  /* ------------------ Init ------------------ */
+
+  loadConfig();
+
   /* ------------------ Start/Login ------------------ */
 
   function showLogin(){
@@ -311,17 +490,35 @@
     if (e.key === "Enter") tryLogin();
   });
 
-  function tryLogin(){
+  async function tryLogin(){
     const code = pwd.value.trim();
 
-    if (TARGETS[code]) {
-      currentTarget = { ...TARGETS[code] };
-      calibrationMode = currentTarget.calibration === true;
+    if (code === "4") {
+      await loadConfig();
+      currentTarget = makeFrizTargetFromConfig();
+      calibrationMode = false;
       err.style.display = "none";
       startApp();
-    } else {
-      err.style.display = "block";
+      return;
     }
+
+    if (code === "0") {
+      currentTarget = { ...TARGETS["0"] };
+      calibrationMode = false;
+      err.style.display = "none";
+      startApp();
+      return;
+    }
+
+    if (code === "9") {
+      currentTarget = { ...TARGETS["9"] };
+      calibrationMode = true;
+      err.style.display = "none";
+      startApp();
+      return;
+    }
+
+    err.style.display = "block";
   }
 
   function resetTrackingState(){
@@ -348,6 +545,9 @@
     calibrationDone = false;
     calibrationStartAt = 0;
     calibrationSamples = [];
+
+    configOutput.style.display = "none";
+    configOutput.textContent = "";
   }
 
   function startApp(){
@@ -360,9 +560,10 @@
     statusText.textContent = "…";
 
     if (calibrationMode) {
-      distanceText.textContent = "Target: CALIBRAZIONE\nStai fermo 5 secondi…";
+      distanceText.textContent = "Target: CALIBRAZIONE FRIZ\nStai fermo 5 secondi…";
     } else {
-      distanceText.textContent = `Target: ${currentTarget.name}\nDistanza: …`;
+      const source = configLoadedFromFile ? "config.json" : "backup interno";
+      distanceText.textContent = `Target: ${currentTarget.name}\nDistanza: …\nSorgente: ${source}`;
     }
 
     statusImage.src = IMG.GHIACCIATO;
@@ -397,7 +598,7 @@
     watchId = navigator.geolocation.watchPosition(onPos, onErr, options);
 
     if (calibrationMode) {
-      showToast("Calibrazione GPS: resta fermo circa 5 secondi.", 4000);
+      showToast("Calibrazione Friz: resta fermo circa 5 secondi.", 4000);
     }
   }
 
@@ -476,7 +677,7 @@
 
     if (currentTarget.lat === null || currentTarget.lon === null) {
       statusText.textContent = "CALIBRAZIONE…";
-      distanceText.textContent = "Target: CALIBRAZIONE\nAttendo posizione GPS…";
+      distanceText.textContent = "Target: CALIBRAZIONE FRIZ\nAttendo posizione GPS…";
       updateDebug();
       return;
     }
@@ -507,13 +708,18 @@
       const elapsed = calibrationStartAt > 0 ? Date.now() - calibrationStartAt : 0;
       const remaining = Math.max(0, Math.ceil((CALIBRATION_MS - elapsed) / 1000));
       distanceText.textContent =
-        `Target: CALIBRAZIONE GPS\n` +
+        `Target: CALIBRAZIONE FRIZ\n` +
         `Stai fermo… ${remaining}s\n` +
         `Distanza provvisoria: ${d.toFixed(1)} m`;
     } else {
+      const source = (!calibrationMode && currentTarget.showDot === false)
+        ? (configLoadedFromFile ? "config.json" : "backup interno")
+        : "app";
+
       distanceText.textContent =
         `Target: ${currentTarget.name}\n` +
-        `Distanza: ${d.toFixed(1)} m`;
+        `Distanza: ${d.toFixed(1)} m\n` +
+        `Sorgente: ${source}`;
     }
 
     updateRadar(lat, lon, d, accuracy);
@@ -536,7 +742,7 @@
     }
   }
 
-  /* ------------------ Calibrazione GPS ------------------ */
+  /* ------------------ Calibrazione GPS Friz ------------------ */
 
   function handleCalibrationIfNeeded(lat, lon, accuracy){
     if (!calibrationMode || calibrationDone) return;
@@ -558,7 +764,7 @@
 
     currentTarget.lat = avg.lat;
     currentTarget.lon = avg.lon;
-    currentTarget.name = "Target calibrato qui";
+    currentTarget.name = "Chiosco da Friz calibrato";
     currentTarget.showDot = true;
 
     if (now - calibrationStartAt >= CALIBRATION_MS) {
@@ -567,14 +773,31 @@
       const finalAvg = averageGpsSamples(calibrationSamples);
       currentTarget.lat = finalAvg.lat;
       currentTarget.lon = finalAvg.lon;
-      currentTarget.name = "Target calibrato qui";
+      currentTarget.name = "Chiosco da Friz calibrato";
       currentTarget.showDot = true;
 
+      showConfigToCopy(currentTarget.lat, currentTarget.lon);
+
       showToast(
-        `Target calibrato!\nLat ${currentTarget.lat.toFixed(7)}, Lon ${currentTarget.lon.toFixed(7)}`,
-        5000
+        `Friz calibrato!\nOra copia il blocco config.json qui sotto.`,
+        7000
       );
     }
+  }
+
+  function showConfigToCopy(lat, lon){
+    const json = {
+      friz: {
+        name: "Chiosco da Friz",
+        lat: Number(lat.toFixed(7)),
+        lon: Number(lon.toFixed(7))
+      }
+    };
+
+    configOutput.style.display = "block";
+    configOutput.textContent =
+      "COPIA TUTTO QUESTO DENTRO config.json:\n\n" +
+      JSON.stringify(json, null, 2);
   }
 
   function averageGpsSamples(samples){
@@ -692,8 +915,7 @@
     const targetBearingDeg = bearing(userLat, userLon, currentTarget.lat, currentTarget.lon);
     absoluteBearingDeg = targetBearingDeg;
 
-    // Modalità Chiosco da Friz:
-    // radar solo estetico, niente puntino e niente beep target.
+    // Modalità 4 / Friz: radar solo estetico, niente puntino e niente beep target.
     if (currentTarget.showDot === false) {
       targetDot.style.display = "none";
       dotAngleDeg = null;
@@ -765,15 +987,18 @@
     let calibrationTxt = "";
     if (calibrationMode) {
       calibrationTxt = calibrationDone
-        ? "Calibrazione: COMPLETATA"
+        ? "Calibrazione: COMPLETATA - copia il config qui sotto"
         : `Calibrazione: in corso, campioni ${calibrationSamples.length}`;
     } else {
       calibrationTxt = "Calibrazione: no";
     }
 
+    const configTxt = configLoadedFromFile ? "config.json caricato" : "backup interno";
+
     debugText.textContent =
       `Modalità: ${mode}\n` +
       `Target: ${currentTarget.name}\n` +
+      `Config: ${configTxt}\n` +
       `Tua posizione: ${userTxt}\n` +
       `Coord target: ${targetTxt}\n` +
       `Bearing target: ${bearingTxt} | Direzione cammino: ${movementTxt} | Relativo: ${relativeTxt}\n` +
@@ -865,105 +1090,3 @@
 
 </body>
 </html>
-  <title>The Hunt</title>
-
-  <style>
-    :root{
-      --bg:#000;
-      --fg:#fff;
-      --accent:#3ad6ff;
-      --danger:#ff4b4b;
-    }
-
-    body{
-      margin:0;
-      height:100vh;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-family: Arial, sans-serif;
-      background:#fff;
-      color:#111;
-      overflow:hidden;
-    }
-
-    #enterBtn{
-      width:130px;
-      height:130px;
-      border-radius:50%;
-      background:#000;
-      color:#fff;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      cursor:pointer;
-      user-select:none;
-      -webkit-tap-highlight-color: transparent;
-      font-size:20px;
-      font-weight:900;
-      letter-spacing:1px;
-    }
-
-    #loginBox{
-      display:none;
-      flex-direction:column;
-      align-items:center;
-      gap:10px;
-    }
-
-    #password{
-      width:min(300px, 82vw);
-      padding:12px 14px;
-      font-size:16px;
-      border-radius:12px;
-      border:1px solid #ddd;
-      outline:none;
-      text-align:center;
-      box-shadow:0 10px 30px rgba(0,0,0,.08);
-    }
-
-    #okBtn{
-      padding:10px 18px;
-      border-radius:12px;
-      border:none;
-      cursor:pointer;
-      font-size:16px;
-      background:#111;
-      color:#fff;
-      font-weight:800;
-    }
-
-    #errorMsg{
-      display:none;
-      color:var(--danger);
-      font-size:14px;
-      font-weight:900;
-    }
-
-    #app{
-      display:none;
-      position:relative;
-      width:100%;
-      height:100%;
-      background:var(--bg);
-      color:var(--fg);
-      align-items:center;
-      justify-content:center;
-      flex-direction:column;
-      gap:10px;
-      padding:18px 18px 22px;
-      box-sizing:border-box;
-    }
-
-    #toast{
-      position:absolute;
-      top:10px;
-      left:50%;
-      transform:translateX(-50%);
-      max-width:min(680px, 92vw);
-      padding:10px 14px;
-      border-radius:14px;
-      background:rgba(255,255,255,0.10);
-      border:1px solid rgba(255,255,255,0.18);
-      backdrop-filter: blur(6px);
-
